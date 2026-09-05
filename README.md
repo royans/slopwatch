@@ -75,6 +75,19 @@ pip install -e .
 
 The `slopguard` command-line interface provides fast, rich terminal feedback for auditing and inspecting packages.
 
+### 0. Protect a Project in 1 Second (`slopguard init`)
+Automatically configure project security, install native git pre-commit hooks, and set up CI/CD:
+
+```bash
+slopguard init
+```
+
+* Automatically detects workspace manifests (`requirements.txt`, `pyproject.toml`, `package.json`).
+* Creates `.slopguard.yaml` (customizable allowlist & alert policies).
+* Installs native `.git/hooks/pre-commit` so AI hallucinations can never be committed.
+* Installs `.github/workflows/slopguard.yml` for pull request auditing.
+* Runs an immediate baseline audit across all project dependencies.
+
 ### 1. Check Project Manifests for Hallucinations
 Scan your `requirements.txt` or `package.json` to verify that all declared dependencies are genuine and not unverified or parked squats:
 
@@ -112,6 +125,18 @@ View engine statistics, active YARA rule suites, and loaded parking signatures:
 ```bash
 slopguard info
 ```
+
+---
+
+## ⚙️ Configuration & Whitelisting
+
+SlopGuard is zero-config by default, but supports fine-grained tuning via `.slopguard.yaml` or `pyproject.toml` (`[tool.slopguard]`):
+
+* **Whitelisting Private Packages (`allowlist`)**: Permit internal company SDKs, private mirrors, or vetted direct VCS URLs.
+* **Alert & Failure Thresholds (`fail_on`)**: Control CI exit code behavior (`CRITICAL`, `HIGH` [default], `MEDIUM`, `ANY`).
+* **Path Ignore Patterns (`ignore_paths`)**: Exclude test fixtures, mock data, or documentation.
+
+👉 **Read the complete [SlopGuard Configuration Guide](docs/CONFIGURATION.md)** for syntax examples, rubric tables, and CI/CD recipes.
 
 ---
 

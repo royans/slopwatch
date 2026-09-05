@@ -52,6 +52,7 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^requirements\.txt$",
     r"^LICENSE$",
     r"^README\.md$",
+    r"^docs/(?!internal/|private/|confidential/).*\.md$",
     r"^\.gitignore$",
 ]
 

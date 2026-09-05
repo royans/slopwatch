@@ -208,3 +208,34 @@ async def test_dependency_linter_direct_vcs_and_raw_url(tmp_path: Path):
     assert res_npm["is_clean"] is False
     assert res_npm["flagged_count"] == 1
     assert res_npm["flagged_dependencies"][0]["reason"] == "DIRECT_VCS_OR_RAW_URL_DEPENDENCY"
+
+
+@pytest.mark.asyncio
+async def test_dependency_linter_allowlist_whitelisting(tmp_path: Path):
+    """Verify that allowlist permits internal packages and approved VCS links."""
+    cfg_file = tmp_path / ".slopguard.yaml"
+    cfg_file.write_text("""
+allowlist:
+  - "my-internal-company-sdk"
+  - "git+https://github.com/approved/fork.git"
+fail_on: "HIGH"
+""")
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text(
+        "requests==2.31.0\n"
+        "my-internal-company-sdk==1.0.0\n"
+        "git+https://github.com/approved/fork.git\n"
+    )
+
+    from sentinel.linter.lockfile import load_project_config
+    cfg = load_project_config(tmp_path)
+    assert "my-internal-company-sdk" in cfg["allowlist"]
+
+    linter = DependencyLinter(repository=None, offline=True, config=cfg)
+    result = await linter.audit_file(req_file)
+
+    flagged_names = [item["package"] for item in result["flagged_dependencies"]]
+    assert "my-internal-company-sdk" not in flagged_names
+    assert "git+https://github.com/approved/fork.git" not in flagged_names
+    assert result["is_clean"] is True

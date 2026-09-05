@@ -50,16 +50,87 @@ def _damerau_levenshtein(s1: str, s2: str) -> int:
 _levenshtein = _damerau_levenshtein
 
 
+def _normalize_config_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
+    allowlist = set()
+    raw_list = raw.get("allowlist", []) or raw.get("whitelist", []) or []
+    for item in raw_list:
+        norm = re.sub(r"[-_.]+", "-", str(item)).lower()
+        allowlist.add(norm)
+        allowlist.add(str(item).strip().lower())
+
+    fail_on = str(raw.get("fail_on", raw.get("alert_level", "HIGH"))).upper()
+    if fail_on not in ("CRITICAL", "HIGH", "MEDIUM", "ANY"):
+        fail_on = "HIGH"
+
+    default_scores = {"CRITICAL": 80, "HIGH": 50, "MEDIUM": 35, "ANY": 1}
+    min_threat_score = raw.get("min_threat_score", raw.get("threshold", default_scores.get(fail_on, 50)))
+    try:
+        min_threat_score = int(min_threat_score)
+    except Exception:
+        min_threat_score = default_scores.get(fail_on, 50)
+
+    return {
+        "allowlist": allowlist,
+        "fail_on": fail_on,
+        "min_threat_score": min_threat_score,
+        "offline": bool(raw.get("offline", False)),
+        "ignore_paths": list(raw.get("ignore_paths", []) or []),
+    }
+
+
+def load_project_config(start_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Discover and parse .slopguard.yaml or pyproject.toml [tool.slopguard]."""
+    curr = (start_dir or Path.cwd()).resolve()
+    candidates = [curr, *curr.parents]
+    for parent in candidates:
+        for fname in (".slopguard.yaml", ".slopguard.yml", "slopguard.yaml"):
+            fpath = parent / fname
+            if fpath.is_file():
+                try:
+                    import yaml
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f) or {}
+                    if isinstance(data, dict):
+                        return _normalize_config_dict(data)
+                except Exception:
+                    pass
+        pyproj = parent / "pyproject.toml"
+        if pyproj.is_file():
+            try:
+                import tomllib
+                with open(pyproj, "rb") as f:
+                    data = tomllib.load(f)
+                tool_slop = data.get("tool", {}).get("slopguard", {})
+                if isinstance(tool_slop, dict) and tool_slop:
+                    return _normalize_config_dict(tool_slop)
+            except Exception:
+                pass
+        if (parent / ".git").exists():
+            break
+    return _normalize_config_dict({})
+
+
 class DependencyLinter:
     def __init__(
         self,
         repository: Optional[SentinelRepository] = None,
         offline: bool = False,
         session: Optional[aiohttp.ClientSession] = None,
+        allowlist: Optional[Set[str]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         self.repository = repository
-        self.offline = offline
+        self.config = config if config is not None else load_project_config()
+        self.offline = offline or self.config.get("offline", False)
         self._session = session
+
+        self.allowlist: Set[str] = set()
+        if allowlist:
+            for item in allowlist:
+                self.allowlist.add(self._normalize_dep_name(item, Ecosystem.PYPI))
+                self.allowlist.add(item.strip().lower())
+        if self.config.get("allowlist"):
+            self.allowlist.update(self.config["allowlist"])
 
     async def audit_file(self, file_path: Path) -> Dict[str, Any]:
         """Audit a dependency lockfile and identify dangerous or hallucinated packages."""
@@ -108,6 +179,10 @@ class DependencyLinter:
 
         for raw_dep, version in dependencies:
             norm_dep = self._normalize_dep_name(raw_dep, ecosystem)
+
+            # Check: Project Allowlist (explicitly permitted internal or fork packages)
+            if self.allowlist and (norm_dep in self.allowlist or raw_dep.lower() in self.allowlist):
+                continue
 
             # Check 0: Direct VCS or unpinned URL dependency (bypasses registry audit)
             if version == "VCS_OR_URL":
