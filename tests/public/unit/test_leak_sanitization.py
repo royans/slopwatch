@@ -43,6 +43,10 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^config/config\.yaml\.template$",
     r"^config/signatures/parking_hashes\.json$",
     r"^config/rules/.*\.yar$",
+    r"^scripts/presubmit\.py$",
+    r"^scripts/install_hooks\.sh$",
+    r"^\.githooks/pre-commit$",
+    r"^\.pre-commit-config\.yaml$",
     r"^pyproject\.toml$",
     r"^requirements\.txt$",
     r"^LICENSE$",
@@ -212,4 +216,54 @@ def test_public_repo_is_completely_clean():
     internal_sample = "src/sentinel/integrations/flagthis/mysql_migrator.py"
     is_allowed = any(re.match(p, internal_sample) for p in PUBLIC_ALLOWLIST_PATTERNS)
     assert is_allowed is False
+
+
+def test_presubmit_gatekeeper_blocks_ai_instruction_leaks():
+    """Verify that PresubmitGatekeeper catches AI instruction tags and prompts."""
+    from scripts.presubmit import PresubmitGatekeeper
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        bad_file = tmp_path / "src" / "sentinel" / "leaked_agent.py"
+        bad_file.parent.mkdir(parents=True, exist_ok=True)
+        bad_file.write_text(
+            "# Leaked agent prompt\n"
+            "<USER_REQUEST>Please do not leak this</USER_REQUEST>\n"
+            "def foo():\n"
+            "    return 'You are Antigravity'\n"
+        )
+
+        gk = PresubmitGatekeeper(root_dir=tmp_path)
+        success = gk.run()
+        assert success is False
+        ai_violations = [v for v in gk.violations if v[1] == "AI_INSTRUCTION_LEAK"]
+        assert len(ai_violations) >= 2
+
+
+def test_presubmit_gatekeeper_blocks_agent_workspace_and_skills():
+    """Verify that PresubmitGatekeeper catches .agents directories and rule files."""
+    from scripts.presubmit import PresubmitGatekeeper
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        agent_dir = tmp_path / ".agents" / "rules"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        (agent_dir / "sentinel_rules.md").write_text("# Internal rules\n")
+        (tmp_path / "AGENTS.md").write_text("# Root agents file\n")
+
+        gk = PresubmitGatekeeper(root_dir=tmp_path)
+        success = gk.run()
+        assert success is False
+        blocked = [v for v in gk.violations if v[1] == "BLOCKED_FILE"]
+        assert len(blocked) >= 2
+
+
+def test_presubmit_gatekeeper_passes_on_clean_sentinel_repo():
+    """Verify that PresubmitGatekeeper succeeds on the actual standalone sentinel repo."""
+    from scripts.presubmit import PresubmitGatekeeper
+
+    sentinel_repo = Path(__file__).resolve().parent.parent.parent.parent.parent / "sentinel"
+    if sentinel_repo.exists():
+        gk = PresubmitGatekeeper(root_dir=sentinel_repo)
+        assert gk.run() is True
 

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Sentinel Pre-Commit Hook: Guard against secrets, AI instructions, and leaks
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+PYTHON_BIN="python3"
+
+echo "🔍 Running Sentinel Pre-Commit Gatekeeper..."
+"$PYTHON_BIN" "$REPO_ROOT/scripts/presubmit.py" --staged

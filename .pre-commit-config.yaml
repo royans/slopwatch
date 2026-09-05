@@ -1,0 +1,9 @@
+# Pre-commit configuration for Sentinel
+repos:
+  - repo: local
+    hooks:
+      - id: sentinel-presubmit
+        name: Sentinel Leak & AI Instruction Gatekeeper
+        entry: python3 scripts/presubmit.py --staged
+        language: system
+        stages: [commit]
