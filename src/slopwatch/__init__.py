@@ -27,7 +27,7 @@ from slopwatch.assessor.python_ast import (
 )
 from slopwatch.assessor.scorer import ProgressiveThreatEvaluator
 
-__version__ = "0.2.0"
+__version__ = "0.1.0"
 
 __all__ = [
     "Ecosystem",

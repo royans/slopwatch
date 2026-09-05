@@ -30,7 +30,7 @@ def test_slopwatch_exports():
     assert Ecosystem is not None
     assert ThreatVerdict is not None
     assert SquatDetection is not None
-    assert hasattr(slopwatch, "__version__")
+    assert slopwatch.__version__ == "0.1.0"
 
 
 def test_slopwatch_submodule_aliasing():
