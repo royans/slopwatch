@@ -12,8 +12,6 @@ from slopwatch.core.dto import (
     ASTSecurityReport,
     PackageMetadata,
 )
-from slopwatch.db.engine import DatabaseManager
-from slopwatch.db.repository import SentinelRepository, SlopWatchRepository
 from slopwatch.adapters import get_adapter
 from slopwatch.matrix.generator import generate_ecosystem_candidates, filter_unregistered_candidates
 from slopwatch.linter.lockfile import DependencyLinter
@@ -28,6 +26,22 @@ from slopwatch.assessor.python_ast import (
 from slopwatch.assessor.scorer import ProgressiveThreatEvaluator
 
 __version__ = "0.1.0"
+
+_LAZY_EXPORTS = {
+    "DatabaseManager": ("slopwatch.db.engine", "DatabaseManager"),
+    "SlopWatchRepository": ("slopwatch.db.repository", "SlopWatchRepository"),
+    "SentinelRepository": ("slopwatch.db.repository", "SentinelRepository"),
+}
+
+def __getattr__(name: str):
+    if name in _LAZY_EXPORTS:
+        module_name, attr_name = _LAZY_EXPORTS[name]
+        import importlib
+        mod = importlib.import_module(module_name)
+        val = getattr(mod, attr_name)
+        globals()[name] = val
+        return val
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 __all__ = [
     "Ecosystem",

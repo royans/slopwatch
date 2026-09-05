@@ -11,12 +11,14 @@ import json
 import re
 import tomllib
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional, Set
+from typing import List, Dict, Any, Tuple, Optional, Set, TYPE_CHECKING
 
 import aiohttp
 
 from slopwatch.core.dto import Ecosystem
-from slopwatch.db.repository import SentinelRepository
+
+if TYPE_CHECKING:
+    from slopwatch.db.repository import SentinelRepository
 from slopwatch.core.taxonomies import ENTITIES
 
 # Common popular packages to defend against typosquatting
@@ -113,7 +115,7 @@ def load_project_config(start_dir: Optional[Path] = None) -> Dict[str, Any]:
 class DependencyLinter:
     def __init__(
         self,
-        repository: Optional[SentinelRepository] = None,
+        repository: Optional["SentinelRepository"] = None,
         offline: bool = False,
         session: Optional[aiohttp.ClientSession] = None,
         allowlist: Optional[Set[str]] = None,

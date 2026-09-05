@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
     { name = "Royans K" },
 ]
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 requires-python = ">=3.11"
 keywords = [
     "security",
@@ -33,9 +33,11 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Security",
     "Topic :: Software Development :: Build Tools",
     "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
 ]
 dependencies = [
     "aiohttp>=3.9.0",
@@ -75,6 +77,7 @@ include = ["slopwatch*"]
 
 [tool.setuptools.package-data]
 "slopwatch" = [
+    "py.typed",
     "rules/*.yar",
     "signatures/*.json",
 ]

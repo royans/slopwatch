@@ -1,7 +1,8 @@
 # 🛡️ SlopWatch: Zero-LLM AI Hallucination & Supply Chain Threat Auditor
 
 [![SlopWatch CI](https://github.com/royans/slopwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/royans/slopwatch/actions/workflows/ci.yml)
-[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://github.com/royans/slopwatch/)
+[![PyPI Version](https://img.shields.io/pypi/v/slopwatch.svg)](https://pypi.org/project/slopwatch/)
+[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://pypi.org/project/slopwatch/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Engine](https://img.shields.io/badge/Core-Zero--LLM%20Deterministic-green.svg)](#architecture)
 
@@ -53,6 +54,10 @@ SlopWatch uses `yara-python` for high-throughput compiled pattern matching. Most
 * **Debian / Ubuntu**:
   ```bash
   sudo apt-get update && sudo apt-get install -y python3-dev gcc libssl-dev
+  ```
+* **Alpine Linux**:
+  ```bash
+  apk add --no-cache python3-dev gcc musl-dev libffi-dev
   ```
 
 ### Development Installation
@@ -130,6 +135,27 @@ View engine statistics, active YARA rule suites, and loaded parking signatures:
 slopwatch info
 ```
 
+### 6. CI/CD & Pre-Commit Integration
+
+SlopWatch supports machine-readable output (`--json`) and Git pre-commit hooks for CI/CD pipelines:
+
+```bash
+# Emit structured JSON for CI security gates or dashboard ingestion
+slopwatch check --json
+slopwatch audit . --json
+```
+
+Add SlopWatch to your project's `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/royans/slopwatch
+    rev: v0.1.0
+    hooks:
+      - id: slopwatch-check
+      - id: slopwatch-audit
+```
+
 ---
 
 ## ⚙️ Configuration & Whitelisting
@@ -173,6 +199,7 @@ print(f"Verdict: {result.verdict}")
 
 ---
 
+<a id="architecture"></a>
 ## 🏗️ Architecture
 
 ```

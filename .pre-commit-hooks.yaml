@@ -1,0 +1,14 @@
+- id: slopwatch-check
+  name: SlopWatch Dependency Check
+  description: Scan dependency manifests for hallucinated packages and slopsquatting traps
+  entry: slopwatch check
+  language: python
+  files: (requirements.*\.txt|pyproject\.toml|Pipfile|poetry\.lock|package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$
+  pass_filenames: true
+
+- id: slopwatch-audit
+  name: SlopWatch Source Audit
+  description: Statically audit code files with AST and YARA rules for weaponized traps
+  entry: slopwatch audit .
+  language: python
+  pass_filenames: false

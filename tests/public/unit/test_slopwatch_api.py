@@ -101,3 +101,71 @@ def test_cli_scan_command_clean_and_flagged():
         assert res_flagged.exit_code == 1
         assert "PATTERNS FLAGGED" in res_flagged.output
         assert "Heuristics flagged potential risk areas" in res_flagged.output
+
+
+def test_lazy_database_exports():
+    """Verify that DatabaseManager and SlopWatchRepository are dynamically lazy-loaded."""
+    assert hasattr(slopwatch, "DatabaseManager")
+    assert hasattr(slopwatch, "SlopWatchRepository")
+    assert hasattr(slopwatch, "SentinelRepository")
+    assert slopwatch.DatabaseManager is not None
+    assert slopwatch.SlopWatchRepository is not None
+
+
+def test_cli_scan_json_output():
+    """Verify slopwatch scan --json produces machine-readable JSON."""
+    import json
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        clean_file = tmp_path / "clean.py"
+        clean_file.write_text("a = 1\n")
+
+        res = runner.invoke(cli, ["scan", "--json", str(clean_file)])
+        assert res.exit_code == 0
+        data = json.loads(res.output)
+        assert data["files_scanned"] == 1
+        assert data["total_violations"] == 0
+        assert data["findings"] == []
+
+        flagged_file = tmp_path / "danger.py"
+        flagged_file.write_text("import socket, os\ns = socket.socket()\nos.dup2(s.fileno(), 0)\n")
+        res_flagged = runner.invoke(cli, ["scan", "--json", str(flagged_file)])
+        assert res_flagged.exit_code == 1
+        data_flagged = json.loads(res_flagged.output)
+        assert data_flagged["total_violations"] > 0
+        assert len(data_flagged["findings"]) > 0
+
+
+def test_cli_audit_json_output():
+    """Verify slopwatch audit --json produces machine-readable JSON."""
+    import json
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        clean_file = tmp_path / "app.py"
+        clean_file.write_text("print('hello world')\n")
+
+        res = runner.invoke(cli, ["audit", "--json", str(tmp_path)])
+        assert res.exit_code == 0
+        data = json.loads(res.output)
+        assert data["threat_count"] == 0
+        assert data["files_scanned"] == 1
+        assert data["findings"] == []
+
+
+def test_cli_check_json_output():
+    """Verify slopwatch check --json produces machine-readable JSON."""
+    import json
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        req_file = tmp_path / "requirements.txt"
+        req_file.write_text("requests==2.31.0\nurllib3==2.0.0\n")
+
+        res = runner.invoke(cli, ["check", "--offline", "--json", str(req_file)])
+        assert res.exit_code == 0
+        data = json.loads(res.output)
+        assert data["manifests_count"] == 1
+        assert data["total_dependencies_scanned"] == 2
+        assert data["breached_count"] == 0

@@ -5,6 +5,7 @@ Deterministic Zero-LLM Malware & Supply Chain Security Auditor for Python and Ja
 """
 
 import asyncio
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -60,13 +61,17 @@ def info_cmd():
 
 @cli.command("scan")
 @click.argument("target_path", type=click.Path(exists=True))
-def scan_cmd(target_path: str):
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON format.")
+def scan_cmd(target_path: str, json_output: bool):
     """🔍 Statically scan a source file or directory for weaponized patterns via YARA."""
     path = Path(target_path)
     scanner = YaraPatternScanner()
 
     if not scanner.is_available:
-        console.print("[bold red]❌ YARA engine is unavailable. Please ensure yara-python is installed.[/bold red]")
+        if json_output:
+            click.echo(json.dumps({"error": "YARA engine is unavailable. Please ensure yara-python is installed."}))
+        else:
+            console.print("[bold red]❌ YARA engine is unavailable. Please ensure yara-python is installed.[/bold red]")
         sys.exit(1)
 
     ignored_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "build", "dist", ".pytest_cache", ".tox", ".eggs"}
@@ -76,26 +81,47 @@ def scan_cmd(target_path: str):
         and not any(part in ignored_dirs or part.endswith(".egg-info") for part in p.relative_to(path).parts[:-1])
     ]
 
-    console.print(f"[cyan]Scanning [bold]{len(files_to_scan)}[/bold] file(s) in [bold]{path}[/bold]...[/cyan]\n")
+    if not json_output:
+        console.print(f"[cyan]Scanning [bold]{len(files_to_scan)}[/bold] file(s) in [bold]{path}[/bold]...[/cyan]\n")
 
     total_violations = 0
+    findings = []
     for f in files_to_scan:
         try:
-            content = f.read_text(encoding="utf-8", errors="ignore")
+            fc = f.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
 
-        flags, line_details = scanner.scan_file_content(content, f.name)
+        flags, line_details = scanner.scan_file_content(fc, f.name)
         actionable_flags = [desc for tag, desc in flags if "Environment Variable Access (process.env / os.environ)" not in desc]
         actionable_lines = [ld for tag, ld in line_details if "Environment Variable Access" not in ld]
 
         if actionable_flags or actionable_lines:
-            total_violations += len(actionable_flags) + len(actionable_lines)
-            console.print(f"[bold yellow]⚠️ Flagged threat patterns in {f}:[/bold yellow]")
-            for flag in actionable_flags:
-                console.print(f"   • [yellow]{flag}[/yellow]")
-            for ld in actionable_lines:
-                console.print(f"   • [dim]{ld}[/dim]")
+            file_v = len(actionable_flags) + len(actionable_lines)
+            total_violations += file_v
+            findings.append({
+                "file": str(f),
+                "flags": actionable_flags,
+                "lines": actionable_lines,
+            })
+            if not json_output:
+                console.print(f"[bold yellow]⚠️ Flagged threat patterns in {f}:[/bold yellow]")
+                for flag in actionable_flags:
+                    console.print(f"   • [yellow]{flag}[/yellow]")
+                for ld in actionable_lines:
+                    console.print(f"   • [dim]{ld}[/dim]")
+
+    if json_output:
+        out = {
+            "target": str(path.resolve()),
+            "files_scanned": len(files_to_scan),
+            "total_violations": total_violations,
+            "findings": findings,
+        }
+        click.echo(json.dumps(out, indent=2))
+        if total_violations > 0:
+            sys.exit(1)
+        return
 
     if total_violations == 0:
         console.print(Panel(
@@ -157,32 +183,41 @@ def _discover_manifests(target_path: Path) -> List[Path]:
 @cli.command("check")
 @click.argument("target", type=click.Path(exists=True), default=".", required=False)
 @click.option("--offline", is_flag=True, default=False, help="Disable live registry verification; run offline heuristics only.")
-def check_cmd(target: str, offline: bool):
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON format.")
+def check_cmd(target: str, offline: bool, json_output: bool):
     """📋 Automatically discover and audit project manifests for hallucinated dependencies."""
     async def _run():
         root_path = Path(target).resolve()
         manifests = _discover_manifests(root_path)
 
         if not manifests:
-            console.print(Panel(
-                f"ℹ️  [bold yellow]No supported manifests found[/bold yellow] in [cyan]{root_path}[/cyan].\n"
-                "[dim]Supported: requirements*.txt, pyproject.toml, Pipfile, poetry.lock, package.json, yarn.lock, pnpm-lock.yaml[/dim]",
-                style="yellow"
-            ))
+            if json_output:
+                click.echo(json.dumps({
+                    "target": str(root_path),
+                    "manifests_discovered": 0,
+                    "error": "No supported manifests found."
+                }))
+            else:
+                console.print(Panel(
+                    f"ℹ️  [bold yellow]No supported manifests found[/bold yellow] in [cyan]{root_path}[/cyan].\n"
+                    "[dim]Supported: requirements*.txt, pyproject.toml, Pipfile, poetry.lock, package.json, yarn.lock, pnpm-lock.yaml[/dim]",
+                    style="yellow"
+                ))
             return
 
         mode_desc = " (offline mode)" if offline else " (live upstream registry validation)"
-        if root_path.is_dir():
-            console.print(f"[cyan]Discovered [bold]{len(manifests)}[/bold] manifest(s) in [bold]{root_path.name or root_path}[/bold]{mode_desc}:[/cyan]")
-            for m in manifests:
-                try:
-                    rel = m.relative_to(root_path)
-                except Exception:
-                    rel = m.name
-                console.print(f"  • [bold]{rel}[/bold]")
-            console.print()
-        else:
-            console.print(f"[cyan]Auditing manifest: [bold]{manifests[0].name}[/bold]{mode_desc}...[/cyan]")
+        if not json_output:
+            if root_path.is_dir():
+                console.print(f"[cyan]Discovered [bold]{len(manifests)}[/bold] manifest(s) in [bold]{root_path.name or root_path}[/bold]{mode_desc}:[/cyan]")
+                for m in manifests:
+                    try:
+                        rel = m.relative_to(root_path)
+                    except Exception:
+                        rel = m.name
+                    console.print(f"  • [bold]{rel}[/bold]")
+                console.print()
+            else:
+                console.print(f"[cyan]Auditing manifest: [bold]{manifests[0].name}[/bold]{mode_desc}...[/cyan]")
 
         from slopwatch.linter.lockfile import DependencyLinter
 
@@ -249,6 +284,26 @@ def check_cmd(target: str, offline: bool):
             or item.get("risk_weight", 0) >= min_score
         ]
 
+        if json_output:
+            out = {
+                "target": str(root_path),
+                "offline": offline,
+                "manifests_count": len(manifests),
+                "total_dependencies_scanned": total_scanned,
+                "breached_count": len(breached_items),
+                "flagged_count": len(all_flagged),
+                "breached_dependencies": breached_items,
+                "flagged_dependencies": all_flagged,
+                "manifest_summaries": [
+                    {"manifest": m_name, "dependencies": deps_count, "flagged": flag_count}
+                    for m_name, deps_count, flag_count in manifest_summaries
+                ]
+            }
+            click.echo(json.dumps(out, indent=2))
+            if breached_items:
+                sys.exit(1)
+            return
+
         if len(manifests) > 1:
             summary_table = Table(title="Manifest Audit Summary")
             summary_table.add_column("Manifest", style="cyan")
@@ -296,24 +351,53 @@ def check_cmd(target: str, offline: bool):
 @cli.command("inspect")
 @click.argument("package_name")
 @click.option("--ecosystem", type=click.Choice(["pypi", "npm"]), default="pypi", help="Package ecosystem (default: pypi)")
-def inspect_cmd(package_name: str, ecosystem: str):
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON format.")
+def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
     """📦 Perform deep static AST analysis on an upstream package release."""
     async def _run():
         eco = Ecosystem(ecosystem)
         adapter = get_adapter(eco)
         norm_name = adapter.normalize_name(package_name)
 
-        console.print(f"[cyan]Fetching metadata for [bold]{norm_name}[/bold] on {eco.value.upper()}...[/cyan]")
+        if not json_output:
+            console.print(f"[cyan]Fetching metadata for [bold]{norm_name}[/bold] on {eco.value.upper()}...[/cyan]")
         meta = await adapter.inspect_package_metadata(norm_name)
         if not meta:
-            console.print(f"[bold red]❌ Package '{norm_name}' not found on {eco.value.upper()}.[/bold red]")
+            if json_output:
+                click.echo(json.dumps({
+                    "error": f"Package '{norm_name}' not found on {eco.value.upper()}.",
+                    "package": norm_name,
+                    "ecosystem": eco.value
+                }))
+            else:
+                console.print(f"[bold red]❌ Package '{norm_name}' not found on {eco.value.upper()}.[/bold red]")
             sys.exit(1)
 
-        console.print(f"Author: [magenta]{meta.author or 'Unknown'}[/magenta] | Latest Version: [green]{meta.latest_version}[/green]")
-        console.print(f"Description: {meta.description or 'None'}")
+        if not json_output:
+            console.print(f"Author: [magenta]{meta.author or 'Unknown'}[/magenta] | Latest Version: [green]{meta.latest_version}[/green]")
+            console.print(f"Description: {meta.description or 'None'}")
+            console.print(f"\n[cyan]Downloading payload and performing AST + YARA analysis...[/cyan]")
 
-        console.print(f"\n[cyan]Downloading payload and performing AST + YARA analysis...[/cyan]")
         report = await adapter.download_and_inspect_payload(norm_name, meta.latest_version)
+
+        is_threat = report.verdict in (ThreatVerdict.MALICIOUS, ThreatVerdict.SUSPICIOUS)
+
+        if json_output:
+            out = {
+                "package": norm_name,
+                "ecosystem": eco.value,
+                "version": meta.latest_version,
+                "author": meta.author,
+                "description": meta.description,
+                "verdict": report.verdict.value,
+                "threat_score": report.composite_threat_score,
+                "flags": report.flags,
+                "line_details": report.line_details,
+            }
+            click.echo(json.dumps(out, indent=2))
+            if is_threat:
+                sys.exit(1)
+            return
 
         verdict_color = "red" if report.verdict == ThreatVerdict.MALICIOUS else "yellow" if report.verdict == ThreatVerdict.SUSPICIOUS else "green"
         console.print(Panel(
@@ -330,6 +414,9 @@ def inspect_cmd(package_name: str, ecosystem: str):
             console.print("\n[bold yellow]Line Breakdown:[/bold yellow]")
             for ld in report.line_details:
                 console.print(f"  • {ld}")
+
+        if is_threat:
+            sys.exit(1)
 
     asyncio.run(_run())
 
@@ -523,13 +610,16 @@ jobs:
 @cli.command("audit")
 @click.argument("target_path", type=click.Path(exists=True), default=".")
 @click.option("--strict", is_flag=True, help="Fail on any suspicious signal")
-def audit_cmd(target_path: str, strict: bool):
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON format.")
+def audit_cmd(target_path: str, strict: bool, json_output: bool):
     """🛡️ Audit local project, directory, or lockfiles for supply chain security risks."""
     path = Path(target_path)
-    console.print(f"[cyan]Auditing target: [bold]{path.resolve()}[/bold]...[/cyan]\n")
+    if not json_output:
+        console.print(f"[cyan]Auditing target: [bold]{path.resolve()}[/bold]...[/cyan]\n")
 
     scanner = YaraPatternScanner()
     threat_count = 0
+    findings = []
 
     # 1. Scan source files
     ignored_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "build", "dist", ".pytest_cache", ".tox", ".eggs", "tests"}
@@ -541,20 +631,40 @@ def audit_cmd(target_path: str, strict: bool):
 
     for f in scan_files:
         try:
-            content = f.read_text(encoding="utf-8", errors="ignore")
+            fc = f.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
-        flags, line_details = scanner.scan_file_content(content, f.name)
+        flags, line_details = scanner.scan_file_content(fc, f.name)
         actionable_flags = [desc for tag, desc in flags if "Environment Variable Access (process.env / os.environ)" not in desc]
         actionable_lines = [ld for tag, ld in line_details if "Environment Variable Access" not in ld]
 
         if actionable_flags or actionable_lines:
-            threat_count += len(actionable_flags) + len(actionable_lines)
-            console.print(f"[bold yellow]🔍 Signals in {f}:[/bold yellow]")
-            for flag in actionable_flags:
-                console.print(f"   • {flag}")
-            for ld in actionable_lines:
-                console.print(f"   • {ld}")
+            file_t = len(actionable_flags) + len(actionable_lines)
+            threat_count += file_t
+            findings.append({
+                "file": str(f),
+                "flags": actionable_flags,
+                "lines": actionable_lines,
+            })
+            if not json_output:
+                console.print(f"[bold yellow]🔍 Signals in {f}:[/bold yellow]")
+                for flag in actionable_flags:
+                    console.print(f"   • {flag}")
+                for ld in actionable_lines:
+                    console.print(f"   • {ld}")
+
+    if json_output:
+        out = {
+            "target": str(path.resolve()),
+            "files_scanned": len(scan_files),
+            "threat_count": threat_count,
+            "strict": strict,
+            "findings": findings,
+        }
+        click.echo(json.dumps(out, indent=2))
+        if threat_count > 0:
+            sys.exit(1)
+        return
 
     if threat_count == 0:
         console.print(Panel(
