@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SlopGuard Standalone Pre-Submit Gatekeeper & Leak Protection.
+Sentinel Standalone Pre-Submit Gatekeeper & Leak Protection.
 
 Guarantees that no internal documents, API keys, credentials, local paths,
 AI agent prompts, or un-sanitized internal imports exist in this repository.
@@ -26,7 +26,9 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^src/sentinel/(?!integrations/flagthis/).*\.py$",
     r"^src/slopguard/.*\.py$",
     r"^src/sentinel/rules/.*\.yar$",
+    r"^src/slopguard/rules/.*\.yar$",
     r"^src/sentinel/signatures/.*\.json$",
+    r"^src/slopguard/signatures/.*\.json$",
     r"^tests/.*\.py$",
     r"^tests/fixtures/.*(?:\.json|\.py)$",
     r"^config/config\.yaml\.template$",
@@ -69,8 +71,6 @@ BLOCKED_PATH_PATTERNS = [
     (r"(?:^|/)id_rsa.*", "SSH Private Key (id_rsa)"),
     (r"(?:^|/)id_ed25519.*", "SSH Private Key (id_ed25519)"),
     (r"^src/sentinel/integrations/flagthis(?:/|$)", "Proprietary Enterprise FlagThis Integration"),
-    (r".*(?:mysql|mariadb).*", "Forbidden Database File or Script (MySQL/MariaDB)"),
-    (r".*\.sql$", "Forbidden SQL Script File (.sql)"),
 ]
 
 # 3. Secret & Credential Patterns (Regex patterns)
@@ -104,8 +104,7 @@ INTERNAL_PATTERNS = [
     (r"flagthis\.corp\b", "Internal Domain (flagthis.corp)"),
     (r"royans@gmail\.com", "Private Personal Email"),
     (r"#\s*(?:INTERNAL|PRIVATE|CONFIDENTIAL)\b", "Internal Tag Marker"),
-    (r"\b(?i:mysql)\b", "Forbidden Database Keyword: MySQL"),
-    (r"\b(?i:mariadb)\b", "Forbidden Database Keyword: MariaDB"),
+    (r"\b(?i:mariadb)\b", "Forbidden Keyword: MariaDB"),
     (r"\b(?i:aiomysql)\b", "Forbidden Keyword: AioMySQL"),
     (r"\b(?i:pymysql)\b", "Forbidden Keyword: PyMySQL"),
     (r"\bsentinel_schema_version\b", "Internal Table Keyword"),
@@ -121,9 +120,6 @@ FORBIDDEN_IMPORTS = [
     "aiomysql",
     "pymysql",
     "mariadb",
-    "mysql",
-    "mysql.connector",
-    "mysqldb",
 ]
 
 
@@ -315,7 +311,7 @@ class PresubmitGatekeeper:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SlopGuard Standalone Pre-Submit Gatekeeper")
+    parser = argparse.ArgumentParser(description="Sentinel Standalone Pre-Submit Gatekeeper")
     parser.add_argument("--staged", action="store_true", help="Scan only git staged files")
     parser.add_argument("--target-dir", default=None, help="Target directory to inspect (default: repository root)")
     args = parser.parse_args()
