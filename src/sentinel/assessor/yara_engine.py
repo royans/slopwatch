@@ -285,6 +285,15 @@ class YaraPatternScanner:
 
         return flags, line_details
 
+    def scan_text(self, content: str, filename: str = "snippet.py") -> List[Dict[str, str]]:
+        """Scan a text snippet and return formatted findings with rule details."""
+        flags, line_details = self.scan_file_content(content, filename=filename)
+        results = []
+        for (tag, text) in flags:
+            rule_part = tag.split(":", 1)[1] if ":" in tag else tag
+            results.append({"rule": rule_part, "detail": text, "tag": tag})
+        return results
+
 
 # Process-level singleton scanner
 _DEFAULT_SCANNER: Optional[YaraPatternScanner] = None

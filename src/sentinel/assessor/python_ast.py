@@ -770,3 +770,15 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
         verdict=verdict,
     )
 
+
+
+class PythonASTAssessor:
+    """Convenience class for performing AST static analysis on Python source code."""
+
+    def analyze_source(self, code: str, filename: str = "setup.py") -> ASTSecurityReport:
+        """Statically analyze a Python source code snippet and return security findings."""
+        return inspect_python_code_ast(code, filename=filename)
+
+    def analyze_tarball(self, tarball_path: str) -> ASTSecurityReport:
+        """Statically analyze an extracted or raw package tarball."""
+        return analyze_python_package_tarball(tarball_path)

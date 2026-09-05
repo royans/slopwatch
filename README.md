@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Engine](https://img.shields.io/badge/Core-Zero--LLM%20Deterministic-green.svg)](#architecture)
 
-**SlopGuard** (formerly codenamed Sentinel) is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
+**SlopGuard** is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
 
 Designed for developers, DevSecOps pipelines, and security research teams, SlopGuard operates within the **Adversary Exploitation Window (AEW)**—identifying weaponized packages, deceptive brand squats, and phantom dependencies before they are installed.
 
@@ -43,7 +43,7 @@ pip install -e .
 
 ## 💻 CLI Quickstart
 
-The `sentinel` command-line interface provides fast, rich terminal feedback for auditing and inspecting packages.
+The `slopguard` command-line interface provides fast, rich terminal feedback for auditing and inspecting packages.
 
 ### 1. Check Project Manifests for Hallucinations
 Scan your `requirements.txt` or `package.json` to verify that all declared dependencies are genuine and not unverified or parked squats:
@@ -90,8 +90,7 @@ slopguard info
 SlopGuard can also be integrated directly into your own security tools and CI/CD pipelines:
 
 ```python
-from sentinel.assessor.yara_engine import YaraPatternScanner
-from sentinel.assessor.python_ast import PythonASTAssessor
+from slopguard import YaraPatternScanner, PythonASTAssessor
 
 # 1. Scan source code with the YARA threat engine
 scanner = YaraPatternScanner()
@@ -104,13 +103,13 @@ subprocess.call(['/bin/sh', '-i'])
 ''')
 
 for match in matches:
-    print(f"Detected: {match.rule_name} (Severity: {match.severity})")
+    print(f"Detected: {match['rule']}")
 
-# 2. Static AST analysis
+# 2. Deep static AST analysis
 assessor = PythonASTAssessor()
 result = assessor.analyze_source("import base64; exec(base64.b64decode('...'))")
-print(f"Has obfuscated code: {result.has_obfuscation}")
-print(f"Risk score: {result.score}")
+print(f"Threat Score: {result.composite_threat_score}/100")
+print(f"Verdict: {result.verdict}")
 ```
 
 ---
@@ -154,7 +153,7 @@ print(f"Risk score: {result.score}")
 
 ---
 
-## 🔒 Security & Safe Execution Guarantee
+## 🔒 Safe Analysis & Static Execution Model
 
 SlopGuard is strictly a **zero-dynamic-execution** static engine:
 * It **never** executes package installation scripts (`setup.py`, `install`, `postinstall`).
@@ -162,6 +161,17 @@ SlopGuard is strictly a **zero-dynamic-execution** static engine:
 * Tarball unpacking is guarded by path traversal protections (`strip_components`, safe paths) and bounded archive limits.
 
 ---
+
+## 🕊️ Principles & Philosophy
+
+When evaluating code and packages across the public ecosystem, SlopGuard operates under five foundational first principles:
+
+1. **Be Respectful**: We respect package maintainers, authors, and open-source contributors. We never assume malice where inexperience, early prototyping, or harmless stubs explain the code.
+2. **Do Not Overcommit on Protections**: SlopGuard is a deterministic static analyzer (AST inspection + YARA signatures + metadata heuristics), not an omniscient silver bullet. We avoid hyperbolic claims and are precise about what we detect and what lies outside our scope.
+3. **Assume We Can Be Wrong — Be Humble**: Heuristics are imperfect and false positives can occur. When legitimate code triggers an alert, we treat it as an opportunity to refine our rubrics and correct course humbly.
+4. **Be Truthful & Fact-Oriented**: We strictly separate observable ground truth (LOC, bytes, imports, AST nodes, network calls) from interpretive threat analysis. We never invent or exaggerate findings.
+5. **Do It for the Good of Everyone**: Open source is a shared global commons. Our purpose is to protect developers, teams, and autonomous coding agents from weaponized traps and hallucinated dependencies collaboratively.
+
 
 ## 🤝 Contributing
 

@@ -87,16 +87,24 @@ def scan_cmd(target_path: str):
         flags, line_details = scanner.scan_file_content(content, f.name)
         if flags or line_details:
             total_violations += len(flags) + len(line_details)
-            console.print(f"[bold red]🚨 Threats in {f}:[/bold red]")
+            console.print(f"[bold yellow]⚠️ Flagged patterns in {f}:[/bold yellow]")
             for _, flag in flags:
-                console.print(f"   • [red]{flag}[/red]")
+                console.print(f"   • [yellow]{flag}[/yellow]")
             for _, ld in line_details:
-                console.print(f"   • [yellow]{ld}[/yellow]")
+                console.print(f"   • [dim]{ld}[/dim]")
 
     if total_violations == 0:
-        console.print(Panel(f"✅ [bold green]CLEAN[/bold green]: Zero weaponized patterns detected in {path}", style="green"))
+        console.print(Panel(
+            f"✅ [bold green]SCAN COMPLETE[/bold green]: Zero matched heuristic threat patterns in {path}\n"
+            "[dim]Static checks passed. Review third-party dependencies as part of comprehensive security hygiene.[/dim]",
+            style="green"
+        ))
     else:
-        console.print(Panel(f"❌ [bold red]THREATS DETECTED[/bold red]: Found {total_violations} threat pattern(s)!", style="red"))
+        console.print(Panel(
+            f"⚠️ [bold red]PATTERNS FLAGGED[/bold red]: Found {total_violations} heuristic pattern match(es) for review.\n"
+            "[dim]Heuristics flagged potential risk areas. Review lines above to verify intent.[/dim]",
+            style="red"
+        ))
         sys.exit(1)
 
 
@@ -124,17 +132,18 @@ def check_cmd(file_path: str):
             console.print(f"Total Dependencies Scanned: [bold]{result['total_dependencies']}[/bold]")
 
             if result["is_clean"]:
-                console.print(Panel("✅ ALL DEPENDENCIES CLEAN: No hallucinated packages detected.", style="green"))
+                console.print(Panel("✅ [bold green]ALL DEPENDENCIES VERIFIED[/bold green]: No flagged or suspicious packages detected.\n[dim]Automated static audit passed. Always practice defense-in-depth.[/dim]", style="green"))
             else:
-                console.print(Panel(f"❌ AUDIT FAILED: Found {result['flagged_count']} suspicious package(s)!", style="red"))
-                table = Table(title="Flagged Dependencies")
+                console.print(Panel(f"⚠️ [bold yellow]AUDIT NOTICE[/bold yellow]: Found {result['flagged_count']} dependency(ies) flagged for review.\n[dim]Automated heuristics suggest verification prior to installation.[/dim]", style="yellow"))
+                table = Table(title="Flagged Dependencies (Heuristic Assessment)")
                 table.add_column("Package", style="cyan")
                 table.add_column("Version", style="magenta")
-                table.add_column("Severity", style="bold red")
+                table.add_column("Severity", style="bold yellow")
                 table.add_column("Reason", style="yellow")
                 for item in result["flagged_dependencies"]:
                     table.add_row(item["package"], item["version"], item["severity"], item["reason"])
                 console.print(table)
+                console.print("\n[dim]Note: SlopGuard uses deterministic heuristics that may flag benign stubs. Please verify author and codebase before deploying.[/dim]")
                 sys.exit(1)
 
         await db.close()
@@ -166,7 +175,8 @@ def inspect_cmd(package_name: str, ecosystem: str):
 
         verdict_color = "red" if report.verdict == ThreatVerdict.MALICIOUS else "yellow" if report.verdict == ThreatVerdict.SUSPICIOUS else "green"
         console.print(Panel(
-            f"Verdict: [{verdict_color}]{report.verdict.value}[/{verdict_color}] (Threat Score: {report.composite_threat_score}/100)",
+            f"Heuristic Verdict: [{verdict_color}]{report.verdict.value}[/{verdict_color}] (Threat Score: {report.composite_threat_score}/100)\n"
+            f"[dim]Static assessment based on AST code inspection and YARA threat rules. Heuristics may be imperfect; always inspect source code.[/dim]",
             style=verdict_color
         ))
 
@@ -208,16 +218,24 @@ def audit_cmd(target_path: str, strict: bool):
         flags, line_details = scanner.scan_file_content(content, f.name)
         if flags or line_details:
             threat_count += len(flags) + len(line_details)
-            console.print(f"[bold red]🚨 Issue in {f}:[/bold red]")
+            console.print(f"[bold yellow]🔍 Signals in {f}:[/bold yellow]")
             for _, flag in flags:
                 console.print(f"   • {flag}")
             for _, ld in line_details:
                 console.print(f"   • {ld}")
 
     if threat_count == 0:
-        console.print(Panel(f"✅ [bold green]AUDIT PASSED[/bold green]: No supply chain threats detected in {path}", style="green"))
+        console.print(Panel(
+            f"✅ [bold green]AUDIT COMPLETE[/bold green]: No known heuristic threat patterns detected across {len(scan_files)} file(s) in {path}.\n"
+            "[dim]SlopGuard static inspection passed. Static checks cannot guarantee the absence of all vulnerabilities; review third-party code carefully.[/dim]",
+            style="green"
+        ))
     else:
-        console.print(Panel(f"❌ [bold red]AUDIT FAILED[/bold red]: Found {threat_count} threat signal(s)!", style="red"))
+        console.print(Panel(
+            f"⚠️ [bold red]AUDIT FINDINGS[/bold red]: Identified {threat_count} heuristic signal(s) requiring review across {len(scan_files)} file(s).\n"
+            "[dim]Please review the detected code locations above. False positives can occur; assess findings in context.[/dim]",
+            style="red"
+        ))
         sys.exit(1)
 
 

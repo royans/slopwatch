@@ -68,7 +68,7 @@ Repository = "https://github.com/royans/slopguard/"
 Issues = "https://github.com/royans/slopguard/issues"
 
 [project.scripts]
-slopguard = "sentinel.cli:main"
+slopguard = "slopguard.cli:main"
 sentinel = "sentinel.cli:main"
 
 [tool.setuptools.packages.find]
@@ -76,6 +76,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "sentinel" = [
+    "rules/*.yar",
+    "signatures/*.json",
+]
+"slopguard" = [
     "rules/*.yar",
     "signatures/*.json",
 ]
