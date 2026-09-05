@@ -894,3 +894,58 @@ setup(name='pybind11', cmdclass={'install': PostInstall})
 
 
 
+
+
+def test_python_ast_dynamic_obfuscation_getattr_and_import():
+    code = """
+from setuptools import setup
+import sys
+
+# Dynamic obfuscation via getattr
+fn = getattr(__builtins__, "eval")
+fn("print('injected')")
+
+# Dynamic import with string concatenation
+mod = __import__("sub" + "process")
+
+# Direct subscript access to __builtins__
+__builtins__["exec"]("import os")
+
+setup(name="test-evasive", version="0.1.0")
+"""
+    report = inspect_python_code_ast(code, "setup.py")
+    assert report.has_dynamic_obfuscation is True
+    assert any("getattr() resolving 'eval'" in f for f in report.flags)
+    assert any("__import__() dynamic loading 'subprocess'" in f for f in report.flags)
+    assert any("Subscript access __builtins__['exec']" in f for f in report.flags)
+    assert report.composite_threat_score >= 80
+
+
+def test_python_ast_ctypes_native_loading():
+    code = """
+from setuptools import setup
+import ctypes
+
+ctypes.cdll.LoadLibrary("./libpayload.so")
+
+setup(name="test-native", version="0.1.0")
+"""
+    report = inspect_python_code_ast(code, "setup.py")
+    assert report.has_dynamic_obfuscation is True
+    assert any("Dynamic native library loading" in f for f in report.flags)
+
+
+def test_npm_source_template_literal_and_process_evasion():
+    tarball = _make_tarball({
+        "package/package.json": '{"name": "test-npm-evasion", "version": "1.0.0"}',
+        "package/index.js": """
+const cp = require(`child_process`);
+const evil = globalThis['eval'];
+const binding = process.binding('spawn_sync');
+"""
+    })
+    report = analyze_npm_package_tarball(tarball, "test-npm-evasion")
+    assert report.has_dynamic_obfuscation is True
+    assert any("child_process" in f for f in report.flags)
+    assert any("globalThis['eval']" in f for f in report.flags)
+    assert any("process.binding" in f for f in report.flags)

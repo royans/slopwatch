@@ -87,6 +87,19 @@ def _resolve_string(node: ast.AST) -> Optional[str]:
     return None
 
 
+def _get_dotted_name(node: ast.AST) -> str:
+    """Extract dotted name from AST node, e.g. ctypes.cdll.LoadLibrary or getattr."""
+    parts = []
+    curr = node
+    while isinstance(curr, ast.Attribute):
+        parts.append(curr.attr)
+        curr = curr.value
+    if isinstance(curr, ast.Name):
+        parts.append(curr.id)
+        return ".".join(reversed(parts))
+    return ""
+
+
 def check_pth_content(content: str, filename: str) -> Tuple[List[str], bool, int]:
     """
     Inspect the content of a Python .pth configuration file.
@@ -289,13 +302,21 @@ class SetupASTVisitor(ast.NodeVisitor):
             self.env_var_accesses.append(("Access to os.environ", node.lineno, False))
         self.generic_visit(node)
 
+    def visit_Subscript(self, node: ast.Subscript):
+        if self.is_install_script:
+            val_name = _get_dotted_name(node.value)
+            if val_name in ("__builtins__", "builtins.__dict__", "sys.modules"):
+                slice_str = _resolve_string(node.slice)
+                if slice_str and slice_str in ("exec", "eval", "system", "popen", "__import__", "subprocess", "posix"):
+                    self.dynamic_obfuscation_calls.append((f"Subscript access {val_name}['{slice_str}']", node.lineno))
+                    self.has_dynamic_obfuscation = True
+                elif isinstance(node.slice, (ast.BinOp, ast.Call)):
+                    self.dynamic_obfuscation_calls.append((f"Subscript access {val_name}[...] with dynamic expression", node.lineno))
+                    self.has_dynamic_obfuscation = True
+        self.generic_visit(node)
+
     def visit_Call(self, node: ast.Call):
-        call_name = ""
-        if isinstance(node.func, ast.Name):
-            call_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            if isinstance(node.func.value, ast.Name):
-                call_name = f"{node.func.value.id}.{node.func.attr}"
+        call_name = _get_dotted_name(node.func)
 
         # 1. Detect setup(cmdclass=...) binding
         if call_name in ("setup", "setuptools.setup") and self.is_install_script:
@@ -307,21 +328,37 @@ class SetupASTVisitor(ast.NodeVisitor):
                             if isinstance(val, ast.Name):
                                 self.cmdclass_registered_classes.add(val.id)
 
-        # 2. Detect getattr() / __import__() dynamic obfuscation with string constant folding
-        if call_name in ("getattr", "__import__") and self.is_install_script:
+        # 2. Detect getattr() / __import__() / ctypes dynamic obfuscation
+        if call_name == "getattr" and self.is_install_script:
             if len(node.args) >= 2:
                 second_arg = node.args[1]
                 resolved_str = _resolve_string(second_arg)
-                if resolved_str and resolved_str in ("system", "popen", "run", "Popen", "call", "exec", "eval", "socket", "subprocess"):
-                    self.dynamic_obfuscation_calls.append((f"{call_name}() resolving '{resolved_str}'", node.lineno))
+                if resolved_str and resolved_str in ("system", "popen", "run", "Popen", "call", "exec", "eval", "socket", "subprocess", "__import__"):
+                    self.dynamic_obfuscation_calls.append((f"getattr() resolving '{resolved_str}'", node.lineno))
                     self.has_dynamic_obfuscation = True
                     self.has_os_system = True
-                elif isinstance(second_arg, ast.BinOp) and isinstance(second_arg.op, ast.Add):
-                    self.dynamic_obfuscation_calls.append((f"{call_name}() with concatenated string", node.lineno))
+                elif isinstance(second_arg, (ast.BinOp, ast.Call)):
+                    self.dynamic_obfuscation_calls.append(("getattr() with dynamic attribute expression", node.lineno))
                     self.has_dynamic_obfuscation = True
-                elif isinstance(second_arg, ast.Call):
-                    self.dynamic_obfuscation_calls.append((f"{call_name}() with dynamic expression", node.lineno))
+
+        elif call_name == "__import__" and self.is_install_script:
+            if len(node.args) >= 1:
+                first_arg = node.args[0]
+                resolved_str = _resolve_string(first_arg)
+                if resolved_str and resolved_str in ("subprocess", "socket", "os", "pty", "posix"):
+                    self.dynamic_obfuscation_calls.append((f"__import__() dynamic loading '{resolved_str}'", node.lineno))
                     self.has_dynamic_obfuscation = True
+                    if resolved_str in ("os", "subprocess"):
+                        self.has_subprocess = True
+                    elif resolved_str == "socket":
+                        self.has_socket = True
+                elif isinstance(first_arg, (ast.BinOp, ast.Call)):
+                    self.dynamic_obfuscation_calls.append(("__import__() with dynamic module expression", node.lineno))
+                    self.has_dynamic_obfuscation = True
+
+        elif call_name in ("ctypes.CDLL", "ctypes.cdll.LoadLibrary", "ctypes.windll.LoadLibrary") and self.is_install_script:
+            self.dynamic_obfuscation_calls.append((f"Dynamic native library loading via {call_name}()", node.lineno))
+            self.has_dynamic_obfuscation = True
 
         # Detect os.getenv() / os.environ.get() in install script
         if call_name in ("os.getenv", "os.environ.get") and self.is_install_script:
@@ -529,6 +566,7 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
         has_base64_eval=visitor.has_base64_eval,
         has_exfiltration_destination=has_exfiltration,
         has_credential_harvesting=has_credential_harvesting,
+        has_dynamic_obfuscation=visitor.has_dynamic_obfuscation,
         total_source_files=1,
         total_lines_of_code=loc,
         total_code_size_bytes=code_bytes,
@@ -768,6 +806,7 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
         has_exfiltration_destination=has_exfiltration,
         has_credential_harvesting=has_cred_harvesting,
         has_bundled_binary=has_bundled_binary,
+        has_dynamic_obfuscation=any("OBFUSCATED" in f or "dynamic" in f.lower() for f in all_flags),
         total_source_files=total_source_files or total_files,
         total_lines_of_code=total_loc,
         total_code_size_bytes=total_code_bytes,

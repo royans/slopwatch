@@ -188,6 +188,17 @@ POSITIVE_RULE_SAMPLES = {
     cp.exec("whoami");
     """,
 
+    "Exec_GlobalThis_Eval": """
+    // Dynamic JavaScript execution via globalThis subscript
+    const dynamicEval = globalThis['eval'];
+    dynamicEval("console.log('pwned')");
+    """,
+
+    "Exec_Process_Binding": """
+    // Internal process binding evasion
+    const binding = process.binding('spawn_sync');
+    """,
+
     "Exec_Python_Subprocess": """
     # Python subprocess invocation from malware payload
     import subprocess

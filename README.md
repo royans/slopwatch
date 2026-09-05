@@ -181,6 +181,11 @@ SlopGuard is strictly a **zero-dynamic-execution** static engine:
 * It **never** imports arbitrary untrusted third-party code into the runtime interpreter.
 * Tarball unpacking is guarded by path traversal protections (`strip_components`, safe paths) and bounded archive limits.
 
+### 🎯 Heuristic Bounds & Transparency
+* **Static Heuristics vs. Sandboxing**: SlopGuard evaluates syntax trees (Python AST), lifecycle scripts, manifest declarations, and proximity-scoped YARA rules. It is designed for fast, non-destructive, zero-LLM scanning of registries and lockfiles. It does not replace full dynamic hypervisor or kernel-level sandboxing (such as decompiling obfuscated native `.so`/`.node` binaries).
+* **Respectful Verdicts**: Community libraries with standard system calls or telemetry are classified conservatively (`BENIGN_COMMUNITY` or `UNVERIFIED_COMMUNITY`). The `MALICIOUS` verdict is strictly reserved for confirmed weaponization vectors (install-time execution, reverse shells, credential exfiltration, OAST callouts).
+* **Direct VCS & Raw URLs**: Manifest checks detect direct VCS dependencies (`git+https://...`, raw tarballs) which bypass package registry integrity checks.
+
 ---
 
 ## 🤝 Contributing

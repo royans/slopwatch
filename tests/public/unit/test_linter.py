@@ -179,3 +179,32 @@ async def test_dependency_linter_standalone_hallucinated_package(tmp_path: Path,
     assert result["flagged_count"] == 1
     assert result["flagged_dependencies"][0]["normalized"] == "phantom-ai-pkg-fake"
     assert result["flagged_dependencies"][0]["reason"] == "UNREGISTERED_OR_HALLUCINATED_PACKAGE"
+
+
+@pytest.mark.asyncio
+async def test_dependency_linter_direct_vcs_and_raw_url(tmp_path: Path):
+    """Verify linter flags direct git+ and tarball URLs that bypass registry audits."""
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text(
+        "requests==2.31.0\n"
+        "git+https://github.com/evil/repo.git#egg=evil-pkg\n"
+        "https://evil.com/releases/backdoor.tar.gz\n"
+    )
+
+    linter = DependencyLinter(repository=None, offline=True)
+    result = await linter.audit_file(req_file)
+
+    assert result["is_clean"] is False
+    assert result["total_dependencies"] == 3
+    assert result["flagged_count"] == 2
+    reasons = [item["reason"] for item in result["flagged_dependencies"]]
+    assert all(r == "DIRECT_VCS_OR_RAW_URL_DEPENDENCY" for r in reasons)
+
+    pkg_json = tmp_path / "package.json"
+    pkg_json.write_text(
+        '{"dependencies": {"lodash": "^4.17.21", "my-fork": "git+https://github.com/org/fork.git"}}'
+    )
+    res_npm = await linter.audit_file(pkg_json)
+    assert res_npm["is_clean"] is False
+    assert res_npm["flagged_count"] == 1
+    assert res_npm["flagged_dependencies"][0]["reason"] == "DIRECT_VCS_OR_RAW_URL_DEPENDENCY"

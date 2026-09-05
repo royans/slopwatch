@@ -101,6 +101,7 @@ class ASTSecurityReport(BaseModel):
     has_exfiltration_destination: bool = False
     has_credential_harvesting: bool = False
     has_bundled_binary: bool = False
+    has_dynamic_obfuscation: bool = False
     total_source_files: int = 0
     total_lines_of_code: int = 0
     total_code_size_bytes: int = 0

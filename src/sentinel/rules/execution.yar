@@ -31,7 +31,32 @@ rule Exec_ChildProcess {
         category = "exec"
         description = "Node.js child_process module invocation"
     strings:
-        $ = /require\s*\(\s*['"]child_process['"]\s*\)/ ascii
+        $ = /require\s*\(\s*['"`]child_process['"`]\s*\)/ ascii
+        $ = /require\s*\(\s*`[^`]*child_process[^`]*`\s*\)/ ascii
+    condition:
+        any of them
+}
+
+rule Exec_GlobalThis_Eval {
+    meta:
+        prefix = "SOURCE_CODE_DYNAMIC_EXECUTION"
+        label = "globalThis['eval']"
+        category = "eval"
+        description = "Dynamic JavaScript code execution via globalThis, window, or global subscript"
+    strings:
+        $ = /\b(globalThis|window|global)\s*\[\s*['"`]eval['"`]\s*\]/ ascii
+    condition:
+        any of them
+}
+
+rule Exec_Process_Binding {
+    meta:
+        prefix = "SOURCE_CODE_DYNAMIC_EXECUTION"
+        label = "process.binding/mainModule"
+        category = "exec"
+        description = "Node.js internal process binding or mainModule access"
+    strings:
+        $ = /\bprocess\s*\.\s*(binding|mainModule)\b/ ascii
     condition:
         any of them
 }

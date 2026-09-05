@@ -62,7 +62,10 @@ MAX_TOTAL_BYTES_SCANNED = 20 * 1024 * 1024  # stop actively scanning content pas
 EXEC_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\beval\s*\("), "eval()"),
     (re.compile(r"\bnew\s+Function\s*\("), "new Function()"),
-    (re.compile(r"require\s*\(\s*['\"]child_process['\"]\s*\)"), "require('child_process')"),
+    (re.compile(r"require\s*\(\s*['\"`]child_process['\"`]\s*\)"), "require('child_process')"),
+    (re.compile(r"require\s*\(\s*`[^`]*child_process[^`]*`\s*\)"), "require(`child_process`)"),
+    (re.compile(r"\b(?:globalThis|window|global)\s*\[\s*['\"`]eval['\"`]\s*\]"), "globalThis['eval']"),
+    (re.compile(r"\bprocess\s*\.\s*(?:binding|mainModule)\b"), "process.binding/mainModule"),
     (re.compile(r"\bexecSync\s*\(|\bspawnSync\s*\(|\bexecFileSync\s*\("), "execSync/spawnSync"),
 ]
 DANGEROUS_EVAL_PATTERNS: List[Tuple[re.Pattern, str]] = [
@@ -386,6 +389,7 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
         has_exfiltration_destination=any("EXFILTRATION_DESTINATION_DETECTED" in f for f in all_flags),
         has_credential_harvesting=any("CREDENTIAL_PATH_HARVESTING" in f or "SOURCE_CODE_CONFIRMED_STEALER" in f for f in all_flags),
         has_bundled_binary=any("BUNDLED_NATIVE_BINARY" in f for f in all_flags),
+        has_dynamic_obfuscation=any("DYNAMIC_EXECUTION" in f or "OBFUSCATION" in f for f in all_flags),
         total_source_files=total_source_files,
         total_lines_of_code=total_loc,
         total_code_size_bytes=total_bytes,
@@ -426,6 +430,7 @@ def merge_ast_reports(manifest_report: ASTSecurityReport, source_report: ASTSecu
         has_exfiltration_destination=manifest_report.has_exfiltration_destination or source_report.has_exfiltration_destination,
         has_credential_harvesting=manifest_report.has_credential_harvesting or source_report.has_credential_harvesting,
         has_bundled_binary=manifest_report.has_bundled_binary or source_report.has_bundled_binary,
+        has_dynamic_obfuscation=manifest_report.has_dynamic_obfuscation or source_report.has_dynamic_obfuscation,
         total_source_files=source_report.total_source_files if has_real_source_metrics else manifest_report.total_source_files,
         total_lines_of_code=source_report.total_lines_of_code if has_real_source_metrics else manifest_report.total_lines_of_code,
         total_code_size_bytes=source_report.total_code_size_bytes if has_real_source_metrics else manifest_report.total_code_size_bytes,

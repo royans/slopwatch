@@ -109,6 +109,18 @@ class DependencyLinter:
         for raw_dep, version in dependencies:
             norm_dep = self._normalize_dep_name(raw_dep, ecosystem)
 
+            # Check 0: Direct VCS or unpinned URL dependency (bypasses registry audit)
+            if version == "VCS_OR_URL":
+                flagged_items.append({
+                    "package": raw_dep,
+                    "normalized": norm_dep,
+                    "version": version,
+                    "severity": "MEDIUM",
+                    "reason": "DIRECT_VCS_OR_RAW_URL_DEPENDENCY",
+                    "risk_weight": 50,
+                })
+                continue
+
             # Check 1: Active slopsquat watchlist from database
             if norm_dep in watchlist_set:
                 candidate = None
@@ -279,6 +291,11 @@ class DependencyLinter:
             if not line or line.startswith("#") or line.startswith("-"):
                 continue
 
+            if line.startswith("git+") or line.startswith("http://") or line.startswith("https://") or " @ git+" in line or " @ https://" in line:
+                pkg_name = line.split("#egg=")[-1] if "#egg=" in line else line.split("@")[0].strip()
+                dependencies.append((pkg_name or line[:35], "VCS_OR_URL"))
+                continue
+
             match = re.match(r"^([a-zA-Z0-9_\-\.]+)(?:[><=\~!^]=?([a-zA-Z0-9_\-\.]+))?", line)
             if match:
                 pkg_name = match.group(1)
@@ -307,7 +324,11 @@ class DependencyLinter:
                 for name, ver in all_deps.items():
                     if isinstance(ver, dict):
                         ver = ver.get("version", "*")
-                    dependencies.append((name, str(ver)))
+                    ver_str = str(ver)
+                    if any(ver_str.startswith(pfx) for pfx in ("git+", "http://", "https://", "github:", "file:")):
+                        dependencies.append((name, "VCS_OR_URL"))
+                    else:
+                        dependencies.append((name, ver_str))
 
             packages = data.get("packages", {})
             if isinstance(packages, dict):
