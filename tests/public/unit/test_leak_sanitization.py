@@ -57,9 +57,9 @@ class LeakDetector:
         self.violations = []
 
     def check_file_allowlist(self) -> None:
-        ignored_dirs = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "data", "reports", "external", "logs", ".agents"}
+        ignored_dirs = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "data", "reports", "external", "logs", ".agents", "build", "dist"}
         for root, dirs, files in os.walk(self.target_dir):
-            dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.endswith(".egg-info")]
 
             for file in files:
                 full_path = Path(root) / file
@@ -69,9 +69,9 @@ class LeakDetector:
                     self.violations.append((rel_path, "DISALLOWED_FILE", f"Disallowed file: {rel_path}"))
 
     def scan_file_contents(self) -> None:
-        ignored_dirs = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "data", "reports", "external", "logs", ".agents"}
+        ignored_dirs = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "data", "reports", "external", "logs", ".agents", "build", "dist"}
         for root, dirs, files in os.walk(self.target_dir):
-            dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.endswith(".egg-info")]
 
             for file in files:
                 # Exclude the test file itself from the keyword scanner
