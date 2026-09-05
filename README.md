@@ -162,17 +162,6 @@ SlopGuard is strictly a **zero-dynamic-execution** static engine:
 
 ---
 
-## 🕊️ Principles & Philosophy
-
-When evaluating code and packages across the public ecosystem, SlopGuard operates under five foundational first principles:
-
-1. **Be Respectful**: We respect package maintainers, authors, and open-source contributors. We never assume malice where inexperience, early prototyping, or harmless stubs explain the code.
-2. **Do Not Overcommit on Protections**: SlopGuard is a deterministic static analyzer (AST inspection + YARA signatures + metadata heuristics), not an omniscient silver bullet. We avoid hyperbolic claims and are precise about what we detect and what lies outside our scope.
-3. **Assume We Can Be Wrong — Be Humble**: Heuristics are imperfect and false positives can occur. When legitimate code triggers an alert, we treat it as an opportunity to refine our rubrics and correct course humbly.
-4. **Be Truthful & Fact-Oriented**: We strictly separate observable ground truth (LOC, bytes, imports, AST nodes, network calls) from interpretive threat analysis. We never invent or exaggerate findings.
-5. **Do It for the Good of Everyone**: Open source is a shared global commons. Our purpose is to protect developers, teams, and autonomous coding agents from weaponized traps and hallucinated dependencies collaboratively.
-
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please run our pre-submit gatekeeper before opening a pull request:
