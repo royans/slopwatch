@@ -69,10 +69,11 @@ def scan_cmd(target_path: str):
         console.print("[bold red]❌ YARA engine is unavailable. Please ensure yara-python is installed.[/bold red]")
         sys.exit(1)
 
+    ignored_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "build", "dist", ".pytest_cache", ".tox", ".eggs"}
     files_to_scan = [path] if path.is_file() else [
         p for p in path.rglob("*")
         if p.is_file() and p.suffix in (".py", ".js", ".json", ".sh", ".pth")
-        and not any(part in (".git", "__pycache__", ".venv", "node_modules") for part in p.parts)
+        and not any(part in ignored_dirs or part.endswith(".egg-info") for part in p.relative_to(path).parts[:-1])
     ]
 
     console.print(f"[cyan]Scanning [bold]{len(files_to_scan)}[/bold] file(s) in [bold]{path}[/bold]...[/cyan]\n")
@@ -85,12 +86,15 @@ def scan_cmd(target_path: str):
             continue
 
         flags, line_details = scanner.scan_file_content(content, f.name)
-        if flags or line_details:
-            total_violations += len(flags) + len(line_details)
-            console.print(f"[bold yellow]⚠️ Flagged patterns in {f}:[/bold yellow]")
-            for _, flag in flags:
+        actionable_flags = [desc for tag, desc in flags if "Environment Variable Access (process.env / os.environ)" not in desc]
+        actionable_lines = [ld for tag, ld in line_details if "Environment Variable Access" not in ld]
+
+        if actionable_flags or actionable_lines:
+            total_violations += len(actionable_flags) + len(actionable_lines)
+            console.print(f"[bold yellow]⚠️ Flagged threat patterns in {f}:[/bold yellow]")
+            for flag in actionable_flags:
                 console.print(f"   • [yellow]{flag}[/yellow]")
-            for _, ld in line_details:
+            for ld in actionable_lines:
                 console.print(f"   • [dim]{ld}[/dim]")
 
     if total_violations == 0:
@@ -110,43 +114,55 @@ def scan_cmd(target_path: str):
 
 @cli.command("check")
 @click.argument("file_path", type=click.Path(exists=True))
-def check_cmd(file_path: str):
+@click.option("--offline", is_flag=True, default=False, help="Disable live registry verification; run offline heuristics only.")
+def check_cmd(file_path: str, offline: bool):
     """📋 Audit requirements.txt or package.json for hallucinated dependencies."""
     async def _run():
         path = Path(file_path)
-        console.print(f"[cyan]Auditing lockfile: [bold]{path}[/bold]...[/cyan]")
+        mode_desc = " (offline mode)" if offline else " (live upstream registry validation)"
+        console.print(f"[cyan]Auditing lockfile: [bold]{path}[/bold]{mode_desc}...[/cyan]")
 
         from sentinel.linter.lockfile import DependencyLinter
-        from sentinel.db.engine import DatabaseManager
-        from sentinel.db.repository import SentinelRepository
 
-        settings = Settings.load()
-        db = DatabaseManager(database_url=settings.storage.database_url, wal_mode=settings.storage.wal_mode)
-        await db.init_db()
+        repo = None
+        db = None
+        try:
+            from sentinel.db.engine import DatabaseManager
+            from sentinel.db.repository import SentinelRepository
+            settings = Settings.load()
+            db_path = settings.storage.database_url.replace("sqlite+aiosqlite:///", "")
+            if Path(db_path).exists():
+                db = DatabaseManager(database_url=settings.storage.database_url, wal_mode=settings.storage.wal_mode)
+                await db.init_db()
+        except Exception:
+            db = None
 
-        async with db.get_session() as session:
-            repo = SentinelRepository(session)
-            linter = DependencyLinter(repo)
+        if db:
+            async with db.get_session() as session:
+                repo = SentinelRepository(session)
+                linter = DependencyLinter(repository=repo, offline=offline)
+                result = await linter.audit_file(path)
+            await db.close()
+        else:
+            linter = DependencyLinter(repository=None, offline=offline)
             result = await linter.audit_file(path)
 
-            console.print(f"Total Dependencies Scanned: [bold]{result['total_dependencies']}[/bold]")
+        console.print(f"Total Dependencies Scanned: [bold]{result['total_dependencies']}[/bold]")
 
-            if result["is_clean"]:
-                console.print(Panel("✅ [bold green]ALL DEPENDENCIES VERIFIED[/bold green]: No flagged or suspicious packages detected.\n[dim]Automated static audit passed. Always practice defense-in-depth.[/dim]", style="green"))
-            else:
-                console.print(Panel(f"⚠️ [bold yellow]AUDIT NOTICE[/bold yellow]: Found {result['flagged_count']} dependency(ies) flagged for review.\n[dim]Automated heuristics suggest verification prior to installation.[/dim]", style="yellow"))
-                table = Table(title="Flagged Dependencies (Heuristic Assessment)")
-                table.add_column("Package", style="cyan")
-                table.add_column("Version", style="magenta")
-                table.add_column("Severity", style="bold yellow")
-                table.add_column("Reason", style="yellow")
-                for item in result["flagged_dependencies"]:
-                    table.add_row(item["package"], item["version"], item["severity"], item["reason"])
-                console.print(table)
-                console.print("\n[dim]Note: SlopGuard uses deterministic heuristics that may flag benign stubs. Please verify author and codebase before deploying.[/dim]")
-                sys.exit(1)
-
-        await db.close()
+        if result["is_clean"]:
+            console.print(Panel("✅ [bold green]ALL DEPENDENCIES VERIFIED[/bold green]: No flagged or suspicious packages detected.\n[dim]Automated static audit passed. Always practice defense-in-depth.[/dim]", style="green"))
+        else:
+            console.print(Panel(f"⚠️ [bold yellow]AUDIT NOTICE[/bold yellow]: Found {result['flagged_count']} dependency(ies) flagged for review.\n[dim]Automated heuristics suggest verification prior to installation.[/dim]", style="yellow"))
+            table = Table(title="Flagged Dependencies (Heuristic Assessment)")
+            table.add_column("Package", style="cyan")
+            table.add_column("Version", style="magenta")
+            table.add_column("Severity", style="bold yellow")
+            table.add_column("Reason", style="yellow")
+            for item in result["flagged_dependencies"]:
+                table.add_row(item["package"], item["version"], item["severity"], item["reason"])
+            console.print(table)
+            console.print("\n[dim]Note: SlopGuard uses deterministic heuristics that may flag benign stubs. Please verify author and codebase before deploying.[/dim]")
+            sys.exit(1)
 
     asyncio.run(_run())
 
@@ -204,10 +220,11 @@ def audit_cmd(target_path: str, strict: bool):
     threat_count = 0
 
     # 1. Scan source files
+    ignored_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "build", "dist", ".pytest_cache", ".tox", ".eggs", "tests"}
     scan_files = [path] if path.is_file() else [
         p for p in path.rglob("*")
         if p.is_file() and p.suffix in (".py", ".js", ".json", ".sh", ".pth")
-        and not any(part in (".git", "__pycache__", ".venv", "node_modules") for part in p.parts)
+        and not any(part in ignored_dirs or part.endswith(".egg-info") for part in p.relative_to(path).parts[:-1])
     ]
 
     for f in scan_files:
@@ -216,12 +233,15 @@ def audit_cmd(target_path: str, strict: bool):
         except Exception:
             continue
         flags, line_details = scanner.scan_file_content(content, f.name)
-        if flags or line_details:
-            threat_count += len(flags) + len(line_details)
+        actionable_flags = [desc for tag, desc in flags if "Environment Variable Access (process.env / os.environ)" not in desc]
+        actionable_lines = [ld for tag, ld in line_details if "Environment Variable Access" not in ld]
+
+        if actionable_flags or actionable_lines:
+            threat_count += len(actionable_flags) + len(actionable_lines)
             console.print(f"[bold yellow]🔍 Signals in {f}:[/bold yellow]")
-            for _, flag in flags:
+            for flag in actionable_flags:
                 console.print(f"   • {flag}")
-            for _, ld in line_details:
+            for ld in actionable_lines:
                 console.print(f"   • {ld}")
 
     if threat_count == 0:

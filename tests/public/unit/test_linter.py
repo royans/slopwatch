@@ -137,3 +137,45 @@ async def test_dependency_linter_npm_package_json_and_yarn(tmp_path: Path):
     await db.close()
 
 
+
+
+@pytest.mark.asyncio
+async def test_dependency_linter_standalone_offline_typosquat(tmp_path: Path):
+    """Verify standalone mode detects brand typosquats without a database or network."""
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("reqeusts==2.31.0\n")
+
+    linter = DependencyLinter(repository=None, offline=True)
+    result = await linter.audit_file(req_file)
+
+    assert result["is_clean"] is False
+    assert result["total_dependencies"] == 1
+    assert result["flagged_count"] == 1
+    assert result["flagged_dependencies"][0]["normalized"] == "reqeusts"
+    assert "SUSPICIOUS_TYPOSQUAT" in result["flagged_dependencies"][0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_dependency_linter_standalone_hallucinated_package(tmp_path: Path, monkeypatch):
+    """Verify standalone mode flags 404 upstream packages as hallucinated dependencies."""
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("phantom-ai-pkg-fake==1.0.0\nvalid-pkg==1.0.0\n")
+
+    async def mock_verify_upstream_batch(self, items, ecosystem):
+        # mock return: fake returns 404, valid returns 200
+        res = []
+        for raw, norm, ver in items:
+            status = 404 if "fake" in norm else 200
+            res.append((raw, norm, ver, status))
+        return res
+
+    monkeypatch.setattr(DependencyLinter, "_verify_upstream_batch", mock_verify_upstream_batch)
+
+    linter = DependencyLinter(repository=None, offline=False)
+    result = await linter.audit_file(req_file)
+
+    assert result["is_clean"] is False
+    assert result["total_dependencies"] == 2
+    assert result["flagged_count"] == 1
+    assert result["flagged_dependencies"][0]["normalized"] == "phantom-ai-pkg-fake"
+    assert result["flagged_dependencies"][0]["reason"] == "UNREGISTERED_OR_HALLUCINATED_PACKAGE"

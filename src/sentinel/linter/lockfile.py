@@ -1,23 +1,65 @@
 """
-Sentinel Multi-Ecosystem Lockfile & Dependency Linter.
+SlopGuard Multi-Ecosystem Lockfile & Dependency Linter.
 
 Audits requirements.txt, pyproject.toml, Pipfile, poetry.lock, package.json,
 package-lock.json, yarn.lock, and pnpm-lock.yaml for hallucinated, unregistered,
 or actively slopsquatted dependencies.
 """
 
+import asyncio
 import json
 import re
 import tomllib
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional, Set
+
+import aiohttp
+
 from sentinel.core.dto import Ecosystem
 from sentinel.db.repository import SentinelRepository
+from sentinel.core.taxonomies import ENTITIES
+
+# Common popular packages to defend against typosquatting
+POPULAR_PACKAGES = set(ENTITIES) | {
+    "requests", "urllib3", "flask", "django", "fastapi", "numpy", "pandas",
+    "scipy", "scikit-learn", "torch", "tensorflow", "pydantic", "pytest",
+    "cryptography", "click", "rich", "setuptools", "wheel", "pip", "boto3",
+    "express", "react", "vue", "next", "lodash", "axios", "chalk", "commander",
+}
+
+
+def _damerau_levenshtein(s1: str, s2: str) -> int:
+    d = {}
+    len1, len2 = len(s1), len(s2)
+    for i in range(-1, len1 + 1):
+        d[(i, -1)] = i + 1
+    for j in range(-1, len2 + 1):
+        d[(-1, j)] = j + 1
+    for i in range(len1):
+        for j in range(len2):
+            cost = 0 if s1[i] == s2[j] else 1
+            d[(i, j)] = min(
+                d[(i - 1, j)] + 1,
+                d[(i, j - 1)] + 1,
+                d[(i - 1, j - 1)] + cost
+            )
+            if i > 0 and j > 0 and s1[i] == s2[j - 1] and s1[i - 1] == s2[j]:
+                d[(i, j)] = min(d[(i, j)], d[(i - 2, j - 2)] + 1)
+    return d[(len1 - 1, len2 - 1)]
+
+_levenshtein = _damerau_levenshtein
 
 
 class DependencyLinter:
-    def __init__(self, repository: SentinelRepository):
+    def __init__(
+        self,
+        repository: Optional[SentinelRepository] = None,
+        offline: bool = False,
+        session: Optional[aiohttp.ClientSession] = None,
+    ):
         self.repository = repository
+        self.offline = offline
+        self._session = session
 
     async def audit_file(self, file_path: Path) -> Dict[str, Any]:
         """Audit a dependency lockfile and identify dangerous or hallucinated packages."""
@@ -52,16 +94,29 @@ class DependencyLinter:
                 unique_deps.append((d, v))
         dependencies = unique_deps
 
-        registered_set = await self.repository.get_registered_names_set(ecosystem)
-        watchlist_set = await self.repository.get_watchlist_names_set(ecosystem)
+        registered_set: Set[str] = set()
+        watchlist_set: Set[str] = set()
+        if self.repository:
+            try:
+                registered_set = await self.repository.get_registered_names_set(ecosystem)
+                watchlist_set = await self.repository.get_watchlist_names_set(ecosystem)
+            except Exception:
+                pass
 
         flagged_items = []
+        to_verify_online: List[Tuple[str, str, str]] = []
+
         for raw_dep, version in dependencies:
             norm_dep = self._normalize_dep_name(raw_dep, ecosystem)
 
-            # Check 1: Is it in the active slopsquat watchlist?
+            # Check 1: Active slopsquat watchlist from database
             if norm_dep in watchlist_set:
-                candidate = await self.repository.get_candidate_by_name(ecosystem, norm_dep)
+                candidate = None
+                if self.repository:
+                    try:
+                        candidate = await self.repository.get_candidate_by_name(ecosystem, norm_dep)
+                    except Exception:
+                        pass
                 flagged_items.append({
                     "package": raw_dep,
                     "normalized": norm_dep,
@@ -70,16 +125,47 @@ class DependencyLinter:
                     "reason": "MATCHES_UNREGISTERED_SLOPSQUAT_WATCHLIST",
                     "risk_weight": candidate.risk_weight if candidate else 75,
                 })
-            # Check 2: Does it exist in the registered catalog at all?
-            elif registered_set and norm_dep not in registered_set:
-                flagged_items.append({
-                    "package": raw_dep,
-                    "normalized": norm_dep,
-                    "version": version,
-                    "severity": "HIGH",
-                    "reason": "NOT_FOUND_IN_UPSTREAM_REGISTRY",
-                    "risk_weight": 60,
-                })
+                continue
+
+            # Check 2: Already verified in local registered catalog
+            if registered_set and norm_dep in registered_set:
+                continue
+
+            # Check 3: Popular brand typosquat heuristic (offline)
+            is_typosquat = False
+            if len(norm_dep) >= 4 and norm_dep not in POPULAR_PACKAGES:
+                for brand in POPULAR_PACKAGES:
+                    if abs(len(norm_dep) - len(brand)) <= 1 and _levenshtein(norm_dep, brand) == 1:
+                        flagged_items.append({
+                            "package": raw_dep,
+                            "normalized": norm_dep,
+                            "version": version,
+                            "severity": "HIGH",
+                            "reason": f"SUSPICIOUS_TYPOSQUAT_OF_{brand.upper().replace('-', '_')}",
+                            "risk_weight": 80,
+                        })
+                        is_typosquat = True
+                        break
+            if is_typosquat:
+                continue
+
+            # If not in local registered set and not offline, queue for online verification
+            if not self.offline:
+                to_verify_online.append((raw_dep, norm_dep, version))
+
+        # Check 4: Online live registry verification (detect 404 / hallucinated packages)
+        if to_verify_online and not self.offline:
+            results = await self._verify_upstream_batch(to_verify_online, ecosystem)
+            for raw_dep, norm_dep, version, status in results:
+                if status == 404:
+                    flagged_items.append({
+                        "package": raw_dep,
+                        "normalized": norm_dep,
+                        "version": version,
+                        "severity": "HIGH",
+                        "reason": "UNREGISTERED_OR_HALLUCINATED_PACKAGE",
+                        "risk_weight": 85,
+                    })
 
         return {
             "target_file": str(path),
@@ -89,6 +175,38 @@ class DependencyLinter:
             "flagged_dependencies": flagged_items,
             "is_clean": len(flagged_items) == 0,
         }
+
+    async def _verify_upstream_batch(
+        self,
+        items: List[Tuple[str, str, str]],
+        ecosystem: Ecosystem,
+    ) -> List[Tuple[str, str, str, Optional[int]]]:
+        """Verify package existence against public PyPI or npm registry APIs."""
+        sem = asyncio.Semaphore(10)
+        own_session = False
+        session = self._session
+        if session is None:
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4.0))
+            own_session = True
+
+        async def check_one(raw: str, norm: str, ver: str):
+            async with sem:
+                if ecosystem == Ecosystem.PYPI:
+                    url = f"https://pypi.org/pypi/{norm}/json"
+                else:
+                    url = f"https://registry.npmjs.org/{norm}"
+                try:
+                    async with session.head(url, allow_redirects=True) as resp:
+                        return (raw, norm, ver, resp.status)
+                except Exception:
+                    return (raw, norm, ver, None)
+
+        try:
+            tasks = [check_one(raw, norm, ver) for raw, norm, ver in items]
+            return await asyncio.gather(*tasks)
+        finally:
+            if own_session:
+                await session.close()
 
     def _normalize_dep_name(self, name: str, ecosystem: Ecosystem) -> str:
         if ecosystem == Ecosystem.PYPI:
@@ -191,7 +309,6 @@ class DependencyLinter:
                         ver = ver.get("version", "*")
                     dependencies.append((name, str(ver)))
 
-            # Also check npm package-lock v2/v3 packages object: {"node_modules/foo": {"version": "..."}}
             packages = data.get("packages", {})
             if isinstance(packages, dict):
                 for key, pinfo in packages.items():
@@ -208,11 +325,11 @@ class DependencyLinter:
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                header_match = re.match(r'^["\']?(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)@[^:]*:', line)
+                header_match = re.match(r"""^['"]?(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)@[^:]*:""", line)
                 if header_match:
                     current_pkg = header_match.group(1)
                 elif current_pkg and line.startswith("version"):
-                    ver_match = re.search(r'version(?:\s+|:\s+)["\']?([^"\']+)["\']?', line)
+                    ver_match = re.search(r"""version(?:\s+|:\s+)['"]?([^'"]+)['"]?""", line)
                     ver = ver_match.group(1) if ver_match else "*"
                     dependencies.append((current_pkg, ver))
                     current_pkg = None
@@ -234,10 +351,10 @@ class DependencyLinter:
                         continue
                     if line.startswith("    "):
                         continue
-                    m = re.match(r"^\s+['\"]?(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)['\"]?:\s*(.*)", line)
+                    m = re.match(r"""^\s+['"]?(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)['"]?:\s*(.*)""", line)
                     if m:
                         pkg_name = m.group(1)
-                        ver = m.group(2).strip().strip("'\"") or "*"
+                        ver = m.group(2).strip().strip("'\"") or '*'
                         dependencies.append((pkg_name, ver))
             return dependencies
 

@@ -70,7 +70,7 @@ def test_every_yara_rule_matches_positive_sample(rule_name):
     """
     scanner = get_yara_scanner()
     content = POSITIVE_RULE_SAMPLES[rule_name]
-    ext = ".py" if "python" in content.lower() or "import " in content else ".js"
+    ext = ".pth" if "pth" in rule_name.lower() else (".py" if "python" in content.lower() or "import " in content else ".js")
     filename = f"sample_{rule_name.lower()}{ext}"
 
     flags, lines = scanner.scan_file_content(content, filename)

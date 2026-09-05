@@ -182,6 +182,10 @@ class YaraPatternScanner:
             label = meta.get("label", match.rule)
             category = meta.get("category", "")
 
+            # .pth startup code injection rules only apply to .pth files
+            if match.rule == "SupplyChain_Python_PTH_Code_Execution" and not filename.lower().endswith(".pth"):
+                continue
+
             # If this is a raw IP check, we need semantic IP address validation
             if category == "raw_ip":
                 for sm in match.strings:

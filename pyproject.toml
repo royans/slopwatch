@@ -29,7 +29,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -73,12 +72,9 @@ sentinel = "sentinel.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["slopguard*"]
 
 [tool.setuptools.package-data]
-"sentinel" = [
-    "rules/*.yar",
-    "signatures/*.json",
-]
 "slopguard" = [
     "rules/*.yar",
     "signatures/*.json",

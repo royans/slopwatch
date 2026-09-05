@@ -52,6 +52,7 @@ def test_yara_scanner_scan_text():
         "import socket, subprocess, os\n"
         "s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
         "s.connect(('127.0.0.1', 4444))\n"
+        "os.dup2(s.fileno(), 0)\n"
     )
     findings = scanner.scan_text(suspicious_code, filename="setup.py")
     assert len(findings) > 0
@@ -94,7 +95,7 @@ def test_cli_scan_command_clean_and_flagged():
 
         flagged_file = tmp_path / "hook.py"
         flagged_file.write_text(
-            "import socket\ns = socket.socket()\ns.connect(('1.2.3.4', 4444))\n"
+            "import socket, os\ns = socket.socket()\nos.dup2(s.fileno(), 0)\n"
         )
         res_flagged = runner.invoke(cli, ["scan", str(flagged_file)])
         assert res_flagged.exit_code == 1

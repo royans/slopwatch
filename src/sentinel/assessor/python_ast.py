@@ -204,7 +204,7 @@ class SetupASTVisitor(ast.NodeVisitor):
         self.dynamic_obfuscation_calls: List[Tuple[str, int]] = []  # (detail, lineno)
         self.function_calls: List[Tuple[str, int]] = []
         self.imported_modules: List[str] = []
-        self.env_var_accesses: List[Tuple[str, int]] = []
+        self.env_var_accesses: List[Tuple[str, int, bool]] = []
         self.function_count = 0
         self.class_count = 0
         self.has_socket = False
@@ -286,7 +286,7 @@ class SetupASTVisitor(ast.NodeVisitor):
             self.dynamic_obfuscation_calls.append((f"Access to '{node.attr}'", node.lineno))
             self.has_dynamic_obfuscation = True
         elif node.attr == "environ" and self.is_install_script:
-            self.env_var_accesses.append(("Access to os.environ", node.lineno))
+            self.env_var_accesses.append(("Access to os.environ", node.lineno, False))
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call):
@@ -325,7 +325,12 @@ class SetupASTVisitor(ast.NodeVisitor):
 
         # Detect os.getenv() / os.environ.get() in install script
         if call_name in ("os.getenv", "os.environ.get") and self.is_install_script:
-            self.env_var_accesses.append((f"Call to {call_name}()", node.lineno))
+            is_sensitive = False
+            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                arg_val = node.args[0].value.upper()
+                if any(k in arg_val for k in ("SECRET", "TOKEN", "KEY", "PASSWORD", "AUTH", "CRED", "API")):
+                    is_sensitive = True
+            self.env_var_accesses.append((f"Call to {call_name}()", node.lineno, is_sensitive))
 
         # 3. Dangerous call evaluation in install script vs library
         if call_name in DANGEROUS_CALLS:
@@ -436,8 +441,9 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
         flags.append(f"INSTALL_TIME_NETWORK_SOCKET: 'socket' module used during {filename} installation")
 
     # 5. Environment variable / secret harvesting during install (AST level)
-    for detail, lineno in visitor.env_var_accesses[:3]:
-        threat_score += 15
+    for detail, lineno, is_sensitive in visitor.env_var_accesses[:3]:
+        pts = 20 if is_sensitive else 0
+        threat_score += pts
         flags.append(f"SOURCE_CODE_ENV_VARS_ACCESS: {detail} in {filename}:{lineno}")
         line_details.append(f"{filename}:{lineno} -> {detail}")
 
@@ -479,7 +485,10 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
             elif prefix == "SOURCE_CODE_DYNAMIC_CODE_LOADER":
                 threat_score += 45
             elif prefix == "SOURCE_CODE_ENV_VARS_ACCESS" and not visitor.env_var_accesses:
-                threat_score += 15
+                if any(s in dedup_key for s in ("Sensitive Token", "Bulk Environment")):
+                    threat_score += 20
+                else:
+                    threat_score += 0
             elif prefix in ("SOURCE_CODE_DYNAMIC_EXECUTION", "SOURCE_CODE_ENCODED_PAYLOAD"):
                 threat_score += 25
 

@@ -27,7 +27,28 @@ Designed for developers, DevSecOps pipelines, and security research teams, SlopG
 
 ## 🚀 Installation & Quickstart
 
-Clone the repository directly from GitHub:
+Install directly via pip:
+
+```bash
+pip install slopguard
+```
+
+### System Prerequisites
+
+SlopGuard uses `yara-python` for high-throughput compiled pattern matching. Most standard environments install pre-built wheels automatically. If installing in an environment requiring source compilation:
+
+* **macOS**:
+  ```bash
+  brew install yara
+  ```
+* **Debian / Ubuntu**:
+  ```bash
+  sudo apt-get update && sudo apt-get install -y python3-dev gcc libssl-dev
+  ```
+
+### Development Installation
+
+To contribute or run from source:
 
 ```bash
 git clone https://github.com/royans/slopguard.git
