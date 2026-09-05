@@ -24,6 +24,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 # 1. Permitted Public Files & Directories Allowlist (Regex patterns)
 PUBLIC_ALLOWLIST_PATTERNS = [
     r"^src/sentinel/(?!integrations/flagthis/).*\.py$",
+    r"^src/slopguard/.*\.py$",
     r"^src/sentinel/rules/.*\.yar$",
     r"^src/sentinel/signatures/.*\.json$",
     r"^tests/.*\.py$",

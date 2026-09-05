@@ -1,11 +1,11 @@
-# 🛡️ Sentinel: Supply Chain Malware & Squatting Auditor
+# 🛡️ SlopGuard: Zero-LLM AI Hallucination & Supply Chain Threat Auditor
 
-[![Sentinel CI](https://github.com/royans/sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/royans/sentinel/actions/workflows/ci.yml)
-[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://github.com/royans/sentinel/)
+[![SlopGuard CI](https://github.com/royans/slopguard/actions/workflows/ci.yml/badge.svg)](https://github.com/royans/slopguard/actions/workflows/ci.yml)
+[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://github.com/royans/slopguard/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Engine](https://img.shields.io/badge/Core-Zero--LLM%20Deterministic-green.svg)](#architecture)
 
-**Sentinel** is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
+**SlopGuard** (formerly codenamed Sentinel) is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
 
 Designed for developers, DevSecOps pipelines, and security research teams, Sentinel operates within the **Adversary Exploitation Window (AEW)**—identifying weaponized packages, deceptive brand squats, and phantom dependencies before they are installed.
 
@@ -30,8 +30,8 @@ Designed for developers, DevSecOps pipelines, and security research teams, Senti
 Clone the repository directly from GitHub:
 
 ```bash
-git clone https://github.com/royans/sentinel.git
-cd sentinel
+git clone https://github.com/royans/slopguard.git
+cd slopguard
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -49,38 +49,38 @@ The `sentinel` command-line interface provides fast, rich terminal feedback for 
 Scan your `requirements.txt` or `package.json` to verify that all declared dependencies are genuine and not unverified or parked squats:
 
 ```bash
-sentinel check requirements.txt
-sentinel check package.json
+slopguard check requirements.txt
+slopguard check package.json
 ```
 
 ### 2. Deep Static AST Inspection of an Upstream Package
 Fetch and statically inspect any published PyPI or npm package without executing its code:
 
 ```bash
-sentinel inspect requests --ecosystem pypi
-sentinel inspect express --ecosystem npm
+slopguard inspect requests --ecosystem pypi
+slopguard inspect express --ecosystem npm
 ```
 
 ### 3. Statically Scan Local Code or Directory
 Run the AST analyzer and YARA rule engine across any local Python or JavaScript file/directory:
 
 ```bash
-sentinel scan ./src
-sentinel scan setup.py
+slopguard scan ./src
+slopguard scan setup.py
 ```
 
 ### 4. Comprehensive Directory Audit
 Audit an entire project directory, checking source files and manifests simultaneously:
 
 ```bash
-sentinel audit .
+slopguard audit .
 ```
 
 ### 5. Engine Diagnostics & Rule Status
 View engine statistics, active YARA rule suites, and loaded parking signatures:
 
 ```bash
-sentinel info
+slopguard info
 ```
 
 ---

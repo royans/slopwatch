@@ -36,6 +36,7 @@ FORBIDDEN_IMPORTS = [
 
 PUBLIC_ALLOWLIST_PATTERNS = [
     r"^src/sentinel/(?!integrations/flagthis/).*\.py$",
+    r"^src/slopguard/.*\.py$",
     r"^src/sentinel/rules/.*\.yar$",
     r"^src/sentinel/signatures/.*\.json$",
     r"^tests/public/.*\.py$",

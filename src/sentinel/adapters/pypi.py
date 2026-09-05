@@ -138,7 +138,7 @@ class PyPIAdapter(BaseRegistryAdapter):
     async def fetch_download_stats(self, session: aiohttp.ClientSession, package_name: str) -> tuple[int, int, int]:
         """Fetch real-world download counts (monthly, weekly, daily) from PyPI Stats API with rate-limit backoff."""
         stats_url = f"https://pypistats.org/api/packages/{package_name}/recent"
-        headers = {"User-Agent": "Sentinel/1.0 (+https://github.com/royans/sentinel)"}
+        headers = {"User-Agent": "SlopGuard/1.0 (+https://github.com/royans/slopguard)"}
         
         for attempt in range(3):
             try:
@@ -173,7 +173,7 @@ class PyPIAdapter(BaseRegistryAdapter):
         xml_req = xmlrpc.client.dumps((max(1, serial - 1),), "changelog_since_serial")
         headers = {
             "Content-Type": "text/xml",
-            "User-Agent": "Sentinel/1.0 (+https://github.com/royans/sentinel)",
+            "User-Agent": "SlopGuard/1.0 (+https://github.com/royans/slopguard)",
         }
         try:
             # PyPI XML-RPC endpoint is hosted at https://pypi.org/pypi
