@@ -1,0 +1,55 @@
+name: Sentinel CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gatekeeper-and-test:
+    name: Audit, Test & Package (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-mock aioresponses build twine
+          pip install -e .
+
+      - name: 🔒 Run Leak & Sanitization Gatekeeper
+        run: |
+          python scripts/presubmit.py
+
+      - name: 🧪 Run Unit Test Suite
+        run: |
+          pytest tests/ -v
+
+      - name: 📦 Build Distribution Wheel & Tarball
+        run: |
+          python -m build
+
+      - name: 🔍 Validate PyPI Package Metadata (twine check)
+        run: |
+          python -m twine check dist/*
+
+      - name: 🛡️ Verify Standalone CLI Execution
+        run: |
+          sentinel --version
+          sentinel --help
+          sentinel info

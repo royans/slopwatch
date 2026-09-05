@@ -40,6 +40,7 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^LICENSE$",
     r"^README\.md$",
     r"^\.gitignore$",
+    r"^\.github/.*$",
 ]
 
 # 2. Blocked Directory & File Patterns (Fail immediately on match)

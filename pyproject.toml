@@ -5,16 +5,38 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flagthis-sentinel"
 version = "0.1.0"
-description = "Proactive Phantom Squatting Detection within the Adversary Exploitation Window (AEW)"
+description = "High-throughput deterministic supply chain malware, typosquatting, and AI hallucination detection engine."
 readme = "README.md"
-authors = [{ name = "FlagThis Research Team" }]
+authors = [
+    { name = "FlagThis Security Research Team", email = "security@flagthis.com" },
+]
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
+keywords = [
+    "security",
+    "supply-chain",
+    "malware-analysis",
+    "ast-analysis",
+    "yara",
+    "typosquatting",
+    "phantom-squatting",
+    "ai-hallucination",
+    "dependency-auditing",
+]
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Security",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
     "aiohttp>=3.9.0",
@@ -35,7 +57,15 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-mock>=3.12.0",
     "aioresponses>=0.7.6",
+    "build>=1.0.0",
+    "twine>=5.0.0",
 ]
+
+[project.urls]
+Homepage = "https://flagthis.com"
+Documentation = "https://flagthis.com/docs/sentinel"
+Repository = "https://github.com/flagthis/sentinel"
+Issues = "https://github.com/flagthis/sentinel/issues"
 
 [project.scripts]
 sentinel = "sentinel.cli:main"
@@ -52,4 +82,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
-
