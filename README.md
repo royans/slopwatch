@@ -16,7 +16,7 @@ Designed for developers, CI/CD pipelines, and autonomous coding agents, SlopGuar
 ```bash
 # ⚡ Try it in 10 seconds (no config, no API keys)
 pip install slopguard
-slopguard check requirements.txt   # catch hallucinated or unregistered packages
+slopguard check                    # auto-discovers and checks all manifests in project
 slopguard audit .                  # inspect local manifests and source files
 ```
 
@@ -89,12 +89,16 @@ slopguard init
 * Runs an immediate baseline audit across all project dependencies.
 
 ### 1. Check Project Manifests for Hallucinations
-Scan your `requirements.txt` or `package.json` to verify that all declared dependencies are genuine and not unverified or parked squats:
+Run `slopguard check` to automatically discover and audit **all** dependency manifests in your project (Python & npm):
 
 ```bash
-slopguard check requirements.txt
-slopguard check package.json
+slopguard check                     # auto-discovers and audits all project manifests
+slopguard check requirements.txt    # or specify an individual file directly
+slopguard check ./backend           # or audit a specific subproject directory
 ```
+
+* **Supported Manifests**: `requirements*.txt`, `pyproject.toml`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`.
+* **What It Catches**: Hallucinated package names (404s on public registry), brand typosquats, and unpinned direct VCS URLs.
 
 ### 2. Deep Static AST Inspection of an Upstream Package
 Fetch and statically inspect any published PyPI or npm package without executing its code:

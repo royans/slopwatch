@@ -112,15 +112,77 @@ def scan_cmd(target_path: str):
         sys.exit(1)
 
 
+def _discover_manifests(target_path: Path) -> List[Path]:
+    """Find all supported dependency manifests in a file or directory tree."""
+    if target_path.is_file():
+        return [target_path]
+
+    ignored = {".git", "node_modules", ".venv", "venv", "build", "dist", ".pytest_cache", ".tox", ".eggs", "site-packages", "__pycache__"}
+    manifest_patterns = (
+        "requirements*.txt",
+        "pyproject.toml",
+        "Pipfile",
+        "Pipfile.lock",
+        "poetry.lock",
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+    )
+
+    found: List[Path] = []
+    # 1. Top-level files in target directory
+    try:
+        for p in target_path.iterdir():
+            if p.is_file():
+                if any(p.match(pat) for pat in manifest_patterns):
+                    found.append(p)
+    except Exception:
+        pass
+
+    # 2. Check direct subdirectories (e.g. backend/requirements.txt, frontend/package.json)
+    try:
+        for sub in target_path.iterdir():
+            if sub.is_dir() and sub.name not in ignored and not sub.name.startswith("."):
+                for p in sub.iterdir():
+                    if p.is_file():
+                        if any(p.match(pat) for pat in manifest_patterns):
+                            found.append(p)
+    except Exception:
+        pass
+
+    return sorted(found, key=lambda x: str(x))
+
+
 @cli.command("check")
-@click.argument("file_path", type=click.Path(exists=True))
+@click.argument("target", type=click.Path(exists=True), default=".", required=False)
 @click.option("--offline", is_flag=True, default=False, help="Disable live registry verification; run offline heuristics only.")
-def check_cmd(file_path: str, offline: bool):
-    """📋 Audit requirements.txt or package.json for hallucinated dependencies."""
+def check_cmd(target: str, offline: bool):
+    """📋 Automatically discover and audit project manifests for hallucinated dependencies."""
     async def _run():
-        path = Path(file_path)
+        root_path = Path(target).resolve()
+        manifests = _discover_manifests(root_path)
+
+        if not manifests:
+            console.print(Panel(
+                f"ℹ️  [bold yellow]No supported manifests found[/bold yellow] in [cyan]{root_path}[/cyan].\n"
+                "[dim]Supported: requirements*.txt, pyproject.toml, Pipfile, poetry.lock, package.json, yarn.lock, pnpm-lock.yaml[/dim]",
+                style="yellow"
+            ))
+            return
+
         mode_desc = " (offline mode)" if offline else " (live upstream registry validation)"
-        console.print(f"[cyan]Auditing lockfile: [bold]{path}[/bold]{mode_desc}...[/cyan]")
+        if root_path.is_dir():
+            console.print(f"[cyan]Discovered [bold]{len(manifests)}[/bold] manifest(s) in [bold]{root_path.name or root_path}[/bold]{mode_desc}:[/cyan]")
+            for m in manifests:
+                try:
+                    rel = m.relative_to(root_path)
+                except Exception:
+                    rel = m.name
+                console.print(f"  • [bold]{rel}[/bold]")
+            console.print()
+        else:
+            console.print(f"[cyan]Auditing manifest: [bold]{manifests[0].name}[/bold]{mode_desc}...[/cyan]")
 
         from sentinel.linter.lockfile import DependencyLinter
 
@@ -137,46 +199,92 @@ def check_cmd(file_path: str, offline: bool):
         except Exception:
             db = None
 
+        total_scanned = 0
+        all_flagged: List[Dict[str, Any]] = []
+        manifest_summaries: List[Tuple[str, int, int]] = []
+        linter_inst: Optional[DependencyLinter] = None
+
         if db:
             async with db.get_session() as session:
                 repo = SentinelRepository(session)
-                linter = DependencyLinter(repository=repo, offline=offline)
-                result = await linter.audit_file(path)
+                linter_inst = DependencyLinter(repository=repo, offline=offline)
+                for m in manifests:
+                    try:
+                        rel_name = str(m.relative_to(root_path))
+                    except Exception:
+                        rel_name = m.name
+                    res = await linter_inst.audit_file(m)
+                    t = res.get("total_dependencies", 0)
+                    f = res.get("flagged_count", 0)
+                    total_scanned += t
+                    manifest_summaries.append((rel_name, t, f))
+                    for item in res.get("flagged_dependencies", []):
+                        item["manifest"] = rel_name
+                        all_flagged.append(item)
             await db.close()
         else:
-            linter = DependencyLinter(repository=None, offline=offline)
-            result = await linter.audit_file(path)
+            linter_inst = DependencyLinter(repository=None, offline=offline)
+            for m in manifests:
+                try:
+                    rel_name = str(m.relative_to(root_path))
+                except Exception:
+                    rel_name = m.name
+                res = await linter_inst.audit_file(m)
+                t = res.get("total_dependencies", 0)
+                f = res.get("flagged_count", 0)
+                total_scanned += t
+                manifest_summaries.append((rel_name, t, f))
+                for item in res.get("flagged_dependencies", []):
+                    item["manifest"] = rel_name
+                    all_flagged.append(item)
 
-        console.print(f"Total Dependencies Scanned: [bold]{result['total_dependencies']}[/bold]")
-
-        fail_policy = linter.config.get("fail_on", "HIGH")
-        min_score = linter.config.get("min_threat_score", 50)
+        fail_policy = linter_inst.config.get("fail_on", "HIGH") if linter_inst else "HIGH"
+        min_score = linter_inst.config.get("min_threat_score", 50) if linter_inst else 50
         severity_rank = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
         threshold_rank = severity_rank.get(fail_policy.upper(), 2)
 
         breached_items = [
-            item for item in result["flagged_dependencies"]
+            item for item in all_flagged
             if severity_rank.get(item.get("severity", "MEDIUM").upper(), 1) >= threshold_rank
             or item.get("risk_weight", 0) >= min_score
         ]
 
-        if not result["flagged_dependencies"]:
+        if len(manifests) > 1:
+            summary_table = Table(title="Manifest Audit Summary")
+            summary_table.add_column("Manifest", style="cyan")
+            summary_table.add_column("Dependencies", justify="right")
+            summary_table.add_column("Status", justify="center")
+            for m_name, deps_count, flag_count in manifest_summaries:
+                status_str = "[bold green]CLEAN[/bold green]" if flag_count == 0 else f"[bold yellow]{flag_count} FLAGGED[/bold yellow]"
+                summary_table.add_row(m_name, str(deps_count), status_str)
+            console.print(summary_table)
+            console.print()
+
+        console.print(f"Total Dependencies Scanned: [bold]{total_scanned}[/bold] across [bold]{len(manifests)}[/bold] manifest(s)")
+
+        if not all_flagged:
             console.print(Panel("✅ [bold green]ALL DEPENDENCIES VERIFIED[/bold green]: No flagged or suspicious packages detected.\n[dim]Automated static audit passed. Always practice defense-in-depth.[/dim]", style="green"))
         else:
             alert_style = "red" if breached_items else "yellow"
             alert_title = "AUDIT FAILURE" if breached_items else "AUDIT ADVISORY"
             console.print(Panel(
-                f"⚠️ [bold {alert_style}]{alert_title}[/bold {alert_style}]: Found {result['flagged_count']} dependency(ies) flagged for review.\n"
+                f"⚠️ [bold {alert_style}]{alert_title}[/bold {alert_style}]: Found {len(all_flagged)} dependency(ies) flagged for review.\n"
                 f"[dim]Policy: fail on {fail_policy} (score >= {min_score}). Breached: {len(breached_items)} item(s).[/dim]",
                 style=alert_style
             ))
             table = Table(title="Flagged Dependencies (Heuristic Assessment)")
+            if len(manifests) > 1:
+                table.add_column("Manifest", style="dim")
             table.add_column("Package", style="cyan")
             table.add_column("Version", style="magenta")
             table.add_column("Severity", style="bold yellow")
             table.add_column("Reason", style="yellow")
-            for item in result["flagged_dependencies"]:
-                table.add_row(item["package"], item["version"], item["severity"], item["reason"])
+            for item in all_flagged:
+                row = []
+                if len(manifests) > 1:
+                    row.append(item.get("manifest", ""))
+                row.extend([item["package"], item["version"], item["severity"], item["reason"]])
+                table.add_row(*row)
             console.print(table)
             console.print("\n[dim]Note: SlopGuard uses deterministic heuristics that may flag benign stubs. Configure 'allowlist' in .slopguard.yaml to permit approved packages.[/dim]")
             if breached_items:
