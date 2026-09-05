@@ -38,7 +38,9 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^src/sentinel/(?!integrations/flagthis/).*\.py$",
     r"^src/slopguard/.*\.py$",
     r"^src/sentinel/rules/.*\.yar$",
+    r"^src/slopguard/rules/.*\.yar$",
     r"^src/sentinel/signatures/.*\.json$",
+    r"^src/slopguard/signatures/.*\.json$",
     r"^tests/public/.*\.py$",
     r"^tests/fixtures/.*(?:\.json|\.py)$",
     r"^config/config\.yaml\.template$",
@@ -186,7 +188,9 @@ def test_leak_detector_flags_unauthorized_internal_files():
 def test_zero_mysql_or_mariadb_mentions_in_public_codebase():
     """Verify that zero database keywords exist across the entire public source tree."""
     root_path = Path(__file__).resolve().parent.parent.parent.parent
-    src_dir = root_path / "src" / "sentinel"
+    src_dir = root_path / "src" / "slopguard"
+    if not src_dir.exists():
+        src_dir = root_path / "src" / "sentinel"
     
     forbidden_terms = ["mysql", "mariadb", "pymysql", "aiomysql", "sentinel_schema_version"]
     
@@ -226,7 +230,7 @@ def test_presubmit_gatekeeper_blocks_ai_instruction_leaks():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        bad_file = tmp_path / "src" / "sentinel" / "leaked_agent.py"
+        bad_file = tmp_path / "src" / "slopguard" / "leaked_agent.py"
         bad_file.parent.mkdir(parents=True, exist_ok=True)
         bad_file.write_text(
             "# Leaked agent prompt\n"
