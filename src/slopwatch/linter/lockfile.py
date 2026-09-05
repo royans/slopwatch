@@ -83,7 +83,7 @@ def load_project_config(start_dir: Optional[Path] = None) -> Dict[str, Any]:
     curr = (start_dir or Path.cwd()).resolve()
     candidates = [curr, *curr.parents]
     for parent in candidates:
-        for fname in (".slopwatch.yaml", ".slopwatch.yml", "slopwatch.yaml", ".slopguard.yaml", ".slopguard.yml", "slopguard.yaml"):
+        for fname in (".slopwatch.yaml", ".slopwatch.yml", "slopwatch.yaml"):
             fpath = parent / fname
             if fpath.is_file():
                 try:
@@ -100,7 +100,7 @@ def load_project_config(start_dir: Optional[Path] = None) -> Dict[str, Any]:
                 import tomllib
                 with open(pyproj, "rb") as f:
                     data = tomllib.load(f)
-                tool_slop = data.get("tool", {}).get("slopwatch", {}) or data.get("tool", {}).get("slopguard", {})
+                tool_slop = data.get("tool", {}).get("slopwatch", {})
                 if isinstance(tool_slop, dict) and tool_slop:
                     return _normalize_config_dict(tool_slop)
             except Exception:

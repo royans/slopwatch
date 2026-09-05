@@ -68,7 +68,6 @@ Issues = "https://github.com/royans/slopwatch/issues"
 
 [project.scripts]
 slopwatch = "slopwatch.cli:main"
-slopguard = "slopwatch.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

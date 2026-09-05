@@ -85,10 +85,6 @@ class Settings(BaseModel):
     def sentinel(self) -> SlopWatchConfig:
         return self.slopwatch
 
-    @property
-    def slopguard(self) -> SlopWatchConfig:
-        return self.slopwatch
-
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "Settings":
         """Load settings from YAML file with environment variable overrides."""
@@ -111,10 +107,8 @@ class Settings(BaseModel):
                 if isinstance(loaded, dict):
                     config_dict = loaded
 
-        # Support legacy slopguard and sentinel keys as alias for slopwatch:
-        if "slopguard" in config_dict and "slopwatch" not in config_dict:
-            config_dict["slopwatch"] = config_dict["slopguard"]
-        elif "sentinel" in config_dict and "slopwatch" not in config_dict:
+        # Support legacy sentinel key as alias for slopwatch:
+        if "sentinel" in config_dict and "slopwatch" not in config_dict:
             config_dict["slopwatch"] = config_dict["sentinel"]
 
         # Allow environment variable overrides (SLOPWATCH_* preferred, fallback to SENTINEL_*)
