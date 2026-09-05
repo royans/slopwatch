@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from slopguard.core.freshness import calculate_freshness_interval_days, calculate_next_audit_time
+from slopwatch.core.freshness import calculate_freshness_interval_days, calculate_next_audit_time
 
 
 def test_freshness_interval_under_10_days():

@@ -1,14 +1,14 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
-from slopguard.core.dto import (
+from slopwatch.core.dto import (
     Ecosystem,
     ThreatVerdict,
     WatchlistCandidate,
     PackageMetadata,
     ASTSecurityReport,
 )
-from slopguard.assessor.scorer import (
+from slopwatch.assessor.scorer import (
     ProgressiveThreatEvaluator,
     is_date_stamp_version,
     has_install_time_code_execution,
@@ -96,7 +96,7 @@ async def test_evaluate_popular_community_package(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.threat_score <= 35
 
@@ -141,7 +141,7 @@ async def test_evaluate_community_codebase_score_capping(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.BENIGN_COMMUNITY
         assert detection.threat_score <= 50
@@ -183,7 +183,7 @@ async def test_evaluate_malicious_weaponized_package(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.MALICIOUS
         assert detection.threat_score >= 90
@@ -225,7 +225,7 @@ async def test_evaluate_slopsquat_suspicious_package(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.SUSPICIOUS
         assert detection.threat_score >= 60
@@ -270,7 +270,7 @@ async def test_evaluate_official_google_package(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.VERIFIED_OFFICIAL
         assert detection.threat_score == 0
@@ -349,7 +349,7 @@ async def test_evaluate_url_confusion_sourcerank_hijacking(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         signals = detection.analysis_details.get("signals", [])
         assert any(s["signal_id"] == "SIGNAL_URL_CONFUSION_HIJACKING" for s in signals)
@@ -393,7 +393,7 @@ async def test_evaluate_rapid_semver_burst_velocity(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         signals = detection.analysis_details.get("signals", [])
         assert any(s["signal_id"] == "SIGNAL_RAPID_SEMVER_BURST" for s in signals)
@@ -438,7 +438,7 @@ async def test_evaluate_organizational_domain_name_alignment(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         signals = detection.analysis_details.get("signals", [])
         # Must flag organizational domain alignment
@@ -486,7 +486,7 @@ async def test_evaluate_inflated_major_version_confusion(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         signals = detection.analysis_details.get("signals", [])
         assert any(s["signal_id"] == "SIGNAL_INFLATED_MAJOR_VERSION_CONFUSION" for s in signals)
@@ -576,7 +576,7 @@ async def test_evaluate_inflated_version_alone_is_not_malicious(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict != ThreatVerdict.MALICIOUS
         assert detection.analysis_details["has_install_hook"] is False
@@ -631,7 +631,7 @@ async def test_evaluate_npm_dangerous_lifecycle_script_is_malicious(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.MALICIOUS
         assert detection.analysis_details["has_install_hook"] is True
@@ -687,7 +687,7 @@ async def test_evaluate_npm_source_code_loader_is_malicious(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.MALICIOUS
         assert detection.analysis_details["has_install_hook"] is True
@@ -731,7 +731,7 @@ async def test_evaluate_internal_namespace_confusion_keyword(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         signals = detection.analysis_details.get("signals", [])
         assert any(s["signal_id"] == "SIGNAL_INTERNAL_NAMESPACE_CONFUSION" for s in signals)
@@ -777,7 +777,7 @@ async def test_evaluate_calver_version_year_not_flagged(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         signals = detection.analysis_details.get("signals", [])
         # CalVer must NOT trigger inflated major version confusion
@@ -828,7 +828,7 @@ async def test_evaluate_future_year_version_anomaly(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         signals = detection.analysis_details.get("signals", [])
         assert any(s["signal_id"] == "SIGNAL_FUTURE_YEAR_VERSION_ANOMALY" for s in signals)
@@ -875,7 +875,7 @@ async def test_evaluate_deprecated_package_demoted(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.is_deprecated is True
         assert "deprecated" in detection.deprecation_reason.lower()
@@ -933,7 +933,7 @@ async def test_evaluate_legacy_deprecated_package_disqualified_from_malicious(mo
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.is_deprecated is True
         # Must NOT be MALICIOUS; should be disqualified to BENIGN_COMMUNITY
@@ -989,7 +989,7 @@ async def test_evaluate_stealer_package_exfiltration_and_secrets_is_malicious(mo
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.MALICIOUS
         assert detection.analysis_details["has_confirmed_dangerous_execution"] is True
@@ -1039,7 +1039,7 @@ async def test_evaluate_pth_execution_package_is_malicious(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
         assert detection.verdict == ThreatVerdict.MALICIOUS
         assert detection.analysis_details["has_confirmed_dangerous_execution"] is True
@@ -1082,7 +1082,7 @@ async def test_evaluate_populates_findings_and_runs_plugin_detectors(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
 
     findings = detection.analysis_details["findings"]
@@ -1119,7 +1119,7 @@ async def test_plugin_detector_failure_never_breaks_scoring(mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
         detection = await evaluator.evaluate_candidate(candidate)
     assert detection.verdict is not None
     assert "findings" in detection.analysis_details

@@ -1,6 +1,6 @@
 import pytest
-from slopguard.core.dto import Ecosystem
-from slopguard.matrix.generator import generate_ecosystem_candidates, filter_unregistered_candidates
+from slopwatch.core.dto import Ecosystem
+from slopwatch.matrix.generator import generate_ecosystem_candidates, filter_unregistered_candidates
 
 
 def test_generate_pypi_candidates():

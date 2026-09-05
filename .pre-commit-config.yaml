@@ -1,9 +1,9 @@
-# Pre-commit configuration for SlopGuard
+# Pre-commit configuration for SlopWatch
 repos:
   - repo: local
     hooks:
-      - id: slopguard-presubmit
-        name: SlopGuard Leak & Presubmit Gatekeeper
+      - id: slopwatch-presubmit
+        name: SlopWatch Leak & Presubmit Gatekeeper
         entry: python3 scripts/presubmit.py --staged
         language: system
         stages: [commit]

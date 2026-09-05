@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import aiohttp
 from pathlib import Path
 
-from slopguard.adapters.pypi import PyPIAdapter
-from slopguard.adapters.npm import NpmAdapter
-from slopguard.core.dto import Ecosystem
-from slopguard.core.cache import DiskCacheManager
+from slopwatch.adapters.pypi import PyPIAdapter
+from slopwatch.adapters.npm import NpmAdapter
+from slopwatch.core.dto import Ecosystem
+from slopwatch.core.cache import DiskCacheManager
 
 
 def test_pypi_normalization():

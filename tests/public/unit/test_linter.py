@@ -1,9 +1,9 @@
 import pytest
 from pathlib import Path
-from slopguard.core.dto import Ecosystem, WatchlistCandidate, WatchlistState
-from slopguard.db.engine import DatabaseManager
-from slopguard.db.repository import SentinelRepository
-from slopguard.linter.lockfile import DependencyLinter
+from slopwatch.core.dto import Ecosystem, WatchlistCandidate, WatchlistState
+from slopwatch.db.engine import DatabaseManager
+from slopwatch.db.repository import SentinelRepository
+from slopwatch.linter.lockfile import DependencyLinter
 
 
 @pytest.mark.asyncio
@@ -213,7 +213,7 @@ async def test_dependency_linter_direct_vcs_and_raw_url(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_dependency_linter_allowlist_whitelisting(tmp_path: Path):
     """Verify that allowlist permits internal packages and approved VCS links."""
-    cfg_file = tmp_path / ".slopguard.yaml"
+    cfg_file = tmp_path / ".slopwatch.yaml"
     cfg_file.write_text("""
 allowlist:
   - "my-internal-company-sdk"
@@ -228,7 +228,7 @@ fail_on: "HIGH"
         "git+https://github.com/approved/fork.git\n"
     )
 
-    from slopguard.linter.lockfile import load_project_config
+    from slopwatch.linter.lockfile import load_project_config
     cfg = load_project_config(tmp_path)
     assert "my-internal-company-sdk" in cfg["allowlist"]
 

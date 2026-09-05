@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from slopguard.core.cache import DiskCacheManager
+from slopwatch.core.cache import DiskCacheManager
 
 
 def test_disk_cache_catalog(tmp_path: Path):

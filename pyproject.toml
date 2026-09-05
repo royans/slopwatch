@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "slopguard"
+name = "slopwatch"
 version = "0.1.0"
 description = "Deterministic Zero-LLM AI package hallucination, slopsquatting, and supply chain threat auditor."
 readme = "README.md"
@@ -61,20 +61,21 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/royans/slopguard/"
-Documentation = "https://github.com/royans/slopguard/#readme"
-Repository = "https://github.com/royans/slopguard/"
-Issues = "https://github.com/royans/slopguard/issues"
+Homepage = "https://github.com/royans/slopwatch/"
+Documentation = "https://github.com/royans/slopwatch/#readme"
+Repository = "https://github.com/royans/slopwatch/"
+Issues = "https://github.com/royans/slopwatch/issues"
 
 [project.scripts]
-slopguard = "slopguard.cli:main"
+slopwatch = "slopwatch.cli:main"
+slopguard = "slopwatch.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["slopguard*"]
+include = ["slopwatch*"]
 
 [tool.setuptools.package-data]
-"slopguard" = [
+"slopwatch" = [
     "rules/*.yar",
     "signatures/*.json",
 ]

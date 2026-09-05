@@ -1,5 +1,5 @@
 import pytest
-from slopguard.core.normalizers import (
+from slopwatch.core.normalizers import (
     normalize_email_address,
     normalize_email_domain,
     extract_clean_email_and_domain,

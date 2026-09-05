@@ -27,8 +27,8 @@ SECRET_PATTERNS = [
 ]
 
 FORBIDDEN_IMPORTS = [
-    "slopguard.integrations.flagthis",
-    "slopguard.integrations",
+    "slopwatch.integrations.flagthis",
+    "slopwatch.integrations",
     "sentinel.integrations.flagthis",
     "sentinel.integrations",
     "flagthis",
@@ -37,9 +37,9 @@ FORBIDDEN_IMPORTS = [
 ]
 
 PUBLIC_ALLOWLIST_PATTERNS = [
-    r"^src/slopguard/(?!integrations/flagthis/).*\.py$",
-    r"^src/slopguard/rules/.*\.yar$",
-    r"^src/slopguard/signatures/.*\.json$",
+    r"^src/slopwatch/(?!integrations/flagthis/).*\.py$",
+    r"^src/slopwatch/rules/.*\.yar$",
+    r"^src/slopwatch/signatures/.*\.json$",
     r"^tests/public/.*\.py$",
     r"^tests/fixtures/.*(?:\.json|\.py)$",
     r"^config/config\.yaml\.template$",
@@ -123,7 +123,7 @@ class LeakDetector:
 def test_leak_detector_flags_internal_database_credentials():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        test_file = tmp_path / "src" / "slopguard" / "leaked_db.py"
+        test_file = tmp_path / "src" / "slopwatch" / "leaked_db.py"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         
         # Test detection of forbidden db keywords
@@ -141,7 +141,7 @@ def test_leak_detector_flags_internal_database_credentials():
 def test_leak_detector_flags_internal_database_password():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        test_file = tmp_path / "src" / "slopguard" / "config.py"
+        test_file = tmp_path / "src" / "slopwatch" / "config.py"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         encoded_pw = base64.b64decode(b"ZDBtYWlucjFzayEh").decode("utf-8")
         test_file.write_text(f'PASSWORD = "{encoded_pw}"\n')
@@ -157,9 +157,9 @@ def test_leak_detector_flags_internal_database_password():
 def test_leak_detector_flags_forbidden_internal_database_imports():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        test_file = tmp_path / "src" / "slopguard" / "bad_import.py"
+        test_file = tmp_path / "src" / "slopwatch" / "bad_import.py"
         test_file.parent.mkdir(parents=True, exist_ok=True)
-        mod1 = ".".join(["slopguard", "integrations", "flagthis"])
+        mod1 = ".".join(["slopwatch", "integrations", "flagthis"])
         test_file.write_text(f"from {mod1} import db_engine\nimport aiomysql\n")
         
         detector = LeakDetector(tmp_path)
@@ -187,7 +187,7 @@ def test_leak_detector_flags_unauthorized_internal_files():
 def test_zero_mysql_or_mariadb_mentions_in_public_codebase():
     """Verify that zero database keywords exist across the entire public source tree."""
     root_path = Path(__file__).resolve().parent.parent.parent.parent
-    src_dir = root_path / "src" / "slopguard"
+    src_dir = root_path / "src" / "slopwatch"
     
     forbidden_terms = ["mysql", "mariadb", "pymysql", "aiomysql", "sentinel_schema_version"]
     
@@ -216,7 +216,7 @@ def test_public_repo_is_completely_clean():
 
     # Test that internal integration directory is excluded from public allowlist patterns
     import re
-    internal_sample = "src/slopguard/integrations/flagthis/mysql_migrator.py"
+    internal_sample = "src/slopwatch/integrations/flagthis/mysql_migrator.py"
     is_allowed = any(re.match(p, internal_sample) for p in PUBLIC_ALLOWLIST_PATTERNS)
     assert is_allowed is False
 
@@ -227,7 +227,7 @@ def test_presubmit_gatekeeper_blocks_ai_instruction_leaks():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        bad_file = tmp_path / "src" / "slopguard" / "leaked_agent.py"
+        bad_file = tmp_path / "src" / "slopwatch" / "leaked_agent.py"
         bad_file.parent.mkdir(parents=True, exist_ok=True)
         bad_file.write_text(
             "# Leaked agent prompt\n"
@@ -261,13 +261,13 @@ def test_presubmit_gatekeeper_blocks_agent_workspace_and_skills():
         assert len(blocked) >= 2
 
 
-def test_presubmit_gatekeeper_passes_on_clean_slopguard_repo():
-    """Verify that PresubmitGatekeeper succeeds on the actual standalone slopguard repo."""
+def test_presubmit_gatekeeper_passes_on_clean_slopwatch_repo():
+    """Verify that PresubmitGatekeeper succeeds on the actual standalone slopwatch repo."""
     from scripts.presubmit import PresubmitGatekeeper
 
     base_parent = Path(__file__).resolve().parent.parent.parent.parent.parent
-    slopguard_repo = base_parent / "slopguard"
-    if slopguard_repo.exists():
-        gk = PresubmitGatekeeper(root_dir=slopguard_repo)
+    slopwatch_repo = base_parent / "slopwatch"
+    if slopwatch_repo.exists():
+        gk = PresubmitGatekeeper(root_dir=slopwatch_repo)
         assert gk.run() is True
 

@@ -1,4 +1,4 @@
-from slopguard.core.brands import compute_brand_priority, PRIORITY_BRAND_WEIGHTS
+from slopwatch.core.brands import compute_brand_priority, PRIORITY_BRAND_WEIGHTS
 
 
 def test_compute_brand_priority():

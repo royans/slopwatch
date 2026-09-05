@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timezone
-from slopguard.core.dto import (
+from slopwatch.core.dto import (
     Ecosystem,
     WatchlistState,
     ThreatVerdict,

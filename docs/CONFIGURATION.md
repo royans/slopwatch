@@ -1,45 +1,45 @@
-# ⚙️ SlopGuard Configuration Guide: Whitelisting & Alert Policies
+# ⚙️ SlopWatch Configuration Guide: Whitelisting & Alert Policies
 
-SlopGuard is designed to be **zero-config by default**—it works out-of-the-box on any project without requiring configuration files or API keys.
+SlopWatch is designed to be **zero-config by default**—it works out-of-the-box on any project without requiring configuration files or API keys.
 
 However, real-world development workflows often require **whitelisting private internal packages** (e.g. proprietary company libraries not published to public PyPI/npm) or **tuning alert severity levels** for CI/CD pipelines.
 
-This guide details how to configure SlopGuard via `.slopguard.yaml` or `pyproject.toml`.
+This guide details how to configure SlopWatch via `.slopwatch.yaml` or `pyproject.toml`.
 
 ---
 
-## 🚀 1-Second Setup: `slopguard init`
+## 🚀 1-Second Setup: `slopwatch init`
 
-The fastest way to generate a baseline configuration is running `slopguard init` in your project root:
+The fastest way to generate a baseline configuration is running `slopwatch init` in your project root:
 
 ```bash
-slopguard init
+slopwatch init
 ```
 
 This command automatically:
 1. Inspects your workspace and identifies dependency manifests (`requirements.txt`, `pyproject.toml`, `package.json`, etc.).
-2. Generates a fully annotated `.slopguard.yaml` configuration file.
+2. Generates a fully annotated `.slopwatch.yaml` configuration file.
 3. Installs a native Git pre-commit hook (`.git/hooks/pre-commit`).
-4. Generates a GitHub Actions workflow (`.github/workflows/slopguard.yml`).
+4. Generates a GitHub Actions workflow (`.github/workflows/slopwatch.yml`).
 5. Runs an initial baseline audit across all discovered manifests.
 
 ---
 
 ## 📁 Configuration File Locations
 
-SlopGuard automatically discovers configuration in the project root or any parent directory up to your git root. It checks the following locations in order:
+SlopWatch automatically discovers configuration in the project root or any parent directory up to your git root. It checks the following locations in order:
 
-1. `.slopguard.yaml` / `.slopguard.yml` (Recommended)
-2. `pyproject.toml` (under the `[tool.slopguard]` table)
+1. `.slopwatch.yaml` / `.slopwatch.yml` (Recommended)
+2. `pyproject.toml` (under the `[tool.slopwatch]` table)
 
 ---
 
 ## 📝 Configuration File Reference
 
-### Example: `.slopguard.yaml`
+### Example: `.slopwatch.yaml`
 
 ```yaml
-# SlopGuard Project Configuration (.slopguard.yaml)
+# SlopWatch Project Configuration (.slopwatch.yaml)
 version: 1
 
 # 1. Package Allowlist (Whitelisting)
@@ -52,7 +52,7 @@ allowlist:
   - "git+https://github.com/my-org/custom-fork.git"
 
 # 2. Alert & Failure Policy (Exit Code Trigger)
-# Determines the minimum severity that causes `slopguard check` or `audit` to fail CI (exit code 1).
+# Determines the minimum severity that causes `slopwatch check` or `audit` to fail CI (exit code 1).
 # Options:
 #   - "CRITICAL": Fail CI only on confirmed active malware / weaponized hooks (score >= 80)
 #   - "HIGH":     Fail CI on typosquats, direct unpinned URLs, or confirmed malware (score >= 50) [DEFAULT]
@@ -71,7 +71,7 @@ min_threat_score: 50
 offline: false
 
 # 5. Path Ignore Patterns
-# Glob patterns to skip during directory-wide scans (`slopguard audit .`)
+# Glob patterns to skip during directory-wide scans (`slopwatch audit .`)
 ignore_paths:
   - "tests/**"
   - "fixtures/**"
@@ -86,7 +86,7 @@ ignore_paths:
 For Python projects that prefer keeping all tool configurations in `pyproject.toml`:
 
 ```toml
-[tool.slopguard]
+[tool.slopwatch]
 allowlist = [
     "my-internal-company-sdk",
     "company-auth-token-helper",
@@ -106,18 +106,18 @@ ignore_paths = [
 ## 🛡️ Whitelisting Internal & Private Packages (`allowlist`)
 
 ### Why Whitelisting is Needed
-By default, `slopguard check` queries the public PyPI or npm registry to confirm that declared dependencies actually exist:
-* If an AI assistant (Cursor, Copilot, ChatGPT) invents a fake package name (e.g. `fastapi-azure-auth-toolkit`), the registry returns **404 Not Found**, and SlopGuard flags it as `UNREGISTERED_OR_HALLUCINATED_PACKAGE`.
+By default, `slopwatch check` queries the public PyPI or npm registry to confirm that declared dependencies actually exist:
+* If an AI assistant (Cursor, Copilot, ChatGPT) invents a fake package name (e.g. `fastapi-azure-auth-toolkit`), the registry returns **404 Not Found**, and SlopWatch flags it as `UNREGISTERED_OR_HALLUCINATED_PACKAGE`.
 * However, if your team maintains a **private internal package** on a private index (Artifactory, AWS CodeArtifact, Nexus) that is not published to public PyPI/npm, public registry queries will also return 404.
 
 ### How Whitelisting Works
 When a package name is listed in `allowlist`:
-1. SlopGuard **skips** public registry lookup for that package.
-2. SlopGuard **suppresses** brand typosquatting heuristics for that package.
+1. SlopWatch **skips** public registry lookup for that package.
+2. SlopWatch **suppresses** brand typosquatting heuristics for that package.
 3. Direct VCS URLs matching the allowlist are permitted.
 
 ### Name Normalization in the Allowlist
-SlopGuard normalizes package names automatically:
+SlopWatch normalizes package names automatically:
 * In Python, `My_Internal.SDK` matches `my-internal-sdk` (per PEP 503).
 * In npm, scoped packages like `@myorg/auth` are preserved and matched accurately.
 
@@ -125,7 +125,7 @@ SlopGuard normalizes package names automatically:
 
 ## 🚨 Alert Levels & Default Rubric
 
-SlopGuard classifies security findings into four distinct severity tiers:
+SlopWatch classifies security findings into four distinct severity tiers:
 
 | Severity | Default Score Range | Findings Included | Default CI Action (`fail_on: HIGH`) |
 | :--- | :--- | :--- | :--- |
@@ -156,13 +156,13 @@ CLI flags always take precedence over configuration file settings:
 | :--- | :--- |
 | `--offline` | Disables live HTTP registry validation; runs offline heuristics only. |
 | `--strict` | Enforces strict zero-warning mode on directory audits. |
-| `--force` | Overwrites existing configuration and hooks in `slopguard init`. |
+| `--force` | Overwrites existing configuration and hooks in `slopwatch init`. |
 
 ---
 
 ## 📋 Defaults Summary
 
-If no configuration file is present, SlopGuard applies these defaults:
+If no configuration file is present, SlopWatch applies these defaults:
 
 * **`allowlist`**: Empty (`[]`)
 * **`fail_on`**: `"HIGH"` (fails on score $\ge 50$ or severity `HIGH`/`CRITICAL`)

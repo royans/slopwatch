@@ -1,23 +1,23 @@
-# 🛡️ SlopGuard: Zero-LLM AI Hallucination & Supply Chain Threat Auditor
+# 🛡️ SlopWatch: Zero-LLM AI Hallucination & Supply Chain Threat Auditor
 
-[![SlopGuard CI](https://github.com/royans/slopguard/actions/workflows/ci.yml/badge.svg)](https://github.com/royans/slopguard/actions/workflows/ci.yml)
-[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://github.com/royans/slopguard/)
+[![SlopWatch CI](https://github.com/royans/slopwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/royans/slopwatch/actions/workflows/ci.yml)
+[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://github.com/royans/slopwatch/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Engine](https://img.shields.io/badge/Core-Zero--LLM%20Deterministic-green.svg)](#architecture)
 
-**SlopGuard** is a fast, deterministic supply chain security scanner for Python (PyPI) and JavaScript (npm) packages and lockfiles.
+**SlopWatch** is a fast, deterministic supply chain security scanner for Python (PyPI) and JavaScript (npm) packages and lockfiles.
 
 > **Zero-LLM · 200ms Scans · Zero API Keys · Runs Offline**
 
-Designed for developers, CI/CD pipelines, and autonomous coding agents, SlopGuard protects against **AI package hallucinations** (when an LLM invents a plausible package name that an attacker registers) and **install-time execution traps** (`setup.py` hooks, `.pth` startup implants, npm lifecycle scripts) *before* dependencies touch your machine.
+Designed for developers, CI/CD pipelines, and autonomous coding agents, SlopWatch protects against **AI package hallucinations** (when an LLM invents a plausible package name that an attacker registers) and **install-time execution traps** (`setup.py` hooks, `.pth` startup implants, npm lifecycle scripts) *before* dependencies touch your machine.
 
-> **Live Audits**: SlopGuard was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
+> **Live Audits**: SlopWatch was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
 
 ```bash
 # ⚡ Try it in 10 seconds (no config, no API keys)
-pip install slopguard
-slopguard check                    # auto-discovers and checks all manifests in project
-slopguard audit .                  # inspect local manifests and source files
+pip install slopwatch
+slopwatch check                    # auto-discovers and checks all manifests in project
+slopwatch audit .                  # inspect local manifests and source files
 ```
 
 ---
@@ -39,12 +39,12 @@ slopguard audit .                  # inspect local manifests and source files
 Install directly via pip:
 
 ```bash
-pip install slopguard
+pip install slopwatch
 ```
 
 ### System Prerequisites
 
-SlopGuard uses `yara-python` for high-throughput compiled pattern matching. Most standard environments install pre-built wheels automatically. If installing in an environment requiring source compilation:
+SlopWatch uses `yara-python` for high-throughput compiled pattern matching. Most standard environments install pre-built wheels automatically. If installing in an environment requiring source compilation:
 
 * **macOS**:
   ```bash
@@ -60,8 +60,8 @@ SlopGuard uses `yara-python` for high-throughput compiled pattern matching. Most
 To contribute or run from source:
 
 ```bash
-git clone https://github.com/royans/slopguard.git
-cd slopguard
+git clone https://github.com/royans/slopwatch.git
+cd slopwatch
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -73,28 +73,28 @@ pip install -e .
 
 ## 💻 CLI Quickstart
 
-The `slopguard` command-line interface provides fast, rich terminal feedback for auditing and inspecting packages.
+The `slopwatch` command-line interface provides fast, rich terminal feedback for auditing and inspecting packages.
 
-### 0. Protect a Project in 1 Second (`slopguard init`)
+### 0. Protect a Project in 1 Second (`slopwatch init`)
 Automatically configure project security, install native git pre-commit hooks, and set up CI/CD:
 
 ```bash
-slopguard init
+slopwatch init
 ```
 
 * Automatically detects workspace manifests (`requirements.txt`, `pyproject.toml`, `package.json`).
-* Creates `.slopguard.yaml` (customizable allowlist & alert policies).
+* Creates `.slopwatch.yaml` (customizable allowlist & alert policies).
 * Installs native `.git/hooks/pre-commit` so AI hallucinations can never be committed.
-* Installs `.github/workflows/slopguard.yml` for pull request auditing.
+* Installs `.github/workflows/slopwatch.yml` for pull request auditing.
 * Runs an immediate baseline audit across all project dependencies.
 
 ### 1. Check Project Manifests for Hallucinations
-Run `slopguard check` to automatically discover and audit **all** dependency manifests in your project (Python & npm):
+Run `slopwatch check` to automatically discover and audit **all** dependency manifests in your project (Python & npm):
 
 ```bash
-slopguard check                     # auto-discovers and audits all project manifests
-slopguard check requirements.txt    # or specify an individual file directly
-slopguard check ./backend           # or audit a specific subproject directory
+slopwatch check                     # auto-discovers and audits all project manifests
+slopwatch check requirements.txt    # or specify an individual file directly
+slopwatch check ./backend           # or audit a specific subproject directory
 ```
 
 * **Supported Manifests**: `requirements*.txt`, `pyproject.toml`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`.
@@ -104,52 +104,52 @@ slopguard check ./backend           # or audit a specific subproject directory
 Fetch and statically inspect any published PyPI or npm package without executing its code:
 
 ```bash
-slopguard inspect requests --ecosystem pypi
-slopguard inspect express --ecosystem npm
+slopwatch inspect requests --ecosystem pypi
+slopwatch inspect express --ecosystem npm
 ```
 
 ### 3. Statically Scan Local Code or Directory
 Run the AST analyzer and YARA rule engine across any local Python or JavaScript file/directory:
 
 ```bash
-slopguard scan ./src
-slopguard scan setup.py
+slopwatch scan ./src
+slopwatch scan setup.py
 ```
 
 ### 4. Comprehensive Directory Audit
 Audit an entire project directory, checking source files and manifests simultaneously:
 
 ```bash
-slopguard audit .
+slopwatch audit .
 ```
 
 ### 5. Engine Diagnostics & Rule Status
 View engine statistics, active YARA rule suites, and loaded parking signatures:
 
 ```bash
-slopguard info
+slopwatch info
 ```
 
 ---
 
 ## ⚙️ Configuration & Whitelisting
 
-SlopGuard is zero-config by default, but supports fine-grained tuning via `.slopguard.yaml` or `pyproject.toml` (`[tool.slopguard]`):
+SlopWatch is zero-config by default, but supports fine-grained tuning via `.slopwatch.yaml` or `pyproject.toml` (`[tool.slopwatch]`):
 
 * **Whitelisting Private Packages (`allowlist`)**: Permit internal company SDKs, private mirrors, or vetted direct VCS URLs.
 * **Alert & Failure Thresholds (`fail_on`)**: Control CI exit code behavior (`CRITICAL`, `HIGH` [default], `MEDIUM`, `ANY`).
 * **Path Ignore Patterns (`ignore_paths`)**: Exclude test fixtures, mock data, or documentation.
 
-👉 **Read the complete [SlopGuard Configuration Guide](docs/CONFIGURATION.md)** for syntax examples, rubric tables, and CI/CD recipes.
+👉 **Read the complete [SlopWatch Configuration Guide](docs/CONFIGURATION.md)** for syntax examples, rubric tables, and CI/CD recipes.
 
 ---
 
 ## 🐍 Python API Usage
 
-SlopGuard can also be integrated directly into your own security tools and CI/CD pipelines:
+SlopWatch can also be integrated directly into your own security tools and CI/CD pipelines:
 
 ```python
-from slopguard import YaraPatternScanner, PythonASTAssessor
+from slopwatch import YaraPatternScanner, PythonASTAssessor
 
 # 1. Scan source code with the YARA threat engine
 scanner = YaraPatternScanner()
@@ -212,20 +212,20 @@ print(f"Verdict: {result.verdict}")
 
 ---
 
-## 🔒 What SlopGuard Is & What It Isn’t
+## 🔒 What SlopWatch Is & What It Isn’t
 
 We believe security tools should be radically honest about their boundaries rather than overcommitting on claims.
 
-### ✅ What SlopGuard IS:
+### ✅ What SlopWatch IS:
 * **A fast, deterministic first line of defense**: Runs in milliseconds via Python AST, compiled YARA signatures, and Levenshtein distance trees.
 * **A detector for lazy automated weaponization**: Catches install-time socket connects, reverse shells, child process spawns in `setup.py`, malicious `.pth` startup files, Discord webhook exfiltration, and npm `preinstall` stealer payloads.
 * **An auditor for AI package hallucinations**: Checks whether packages suggested by Copilot, Cursor, or ChatGPT actually exist on PyPI/npm or are parked slopsquats waiting for a developer to run `pip install`.
 * **Respectful of maintainers**: Community libraries with ordinary telemetry or standard system calls are evaluated as `BENIGN_COMMUNITY` or `UNVERIFIED_COMMUNITY`. The `MALICIOUS` verdict is strictly reserved for confirmed, active weaponization vectors.
 
-### ❌ What SlopGuard IS NOT:
+### ❌ What SlopWatch IS NOT:
 * **Not an omniscient hypervisor sandbox**: It performs zero dynamic code execution. It will not execute code in a VM or kernel sandbox to observe runtime behavior.
-* **Not a binary decompiler**: If an attacker embeds compiled machine code inside a native `.so`, `.dylib`, or `.node` file, SlopGuard flags the presence of unexpected native binaries (`BUNDLED_NATIVE_BINARY`), but it does not reverse-engineer the compiled C/Rust assembly.
-* **Not a silver bullet**: Static analysis is inherently an adversarial cat-and-mouse game. High-entropy custom runtime encoders or multi-stage split downloaders can be designed to evade static regex. SlopGuard catches the bulk of automated supply chain attacks instantly without the latency, cost, or prompt-injection vulnerabilities of LLMs.
+* **Not a binary decompiler**: If an attacker embeds compiled machine code inside a native `.so`, `.dylib`, or `.node` file, SlopWatch flags the presence of unexpected native binaries (`BUNDLED_NATIVE_BINARY`), but it does not reverse-engineer the compiled C/Rust assembly.
+* **Not a silver bullet**: Static analysis is inherently an adversarial cat-and-mouse game. High-entropy custom runtime encoders or multi-stage split downloaders can be designed to evade static regex. SlopWatch catches the bulk of automated supply chain attacks instantly without the latency, cost, or prompt-injection vulnerabilities of LLMs.
 
 ---
 

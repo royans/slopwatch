@@ -1,4 +1,4 @@
-name: SlopGuard CI
+name: SlopWatch CI
 
 on:
   push:
@@ -50,6 +50,6 @@ jobs:
 
       - name: 🛡️ Verify Standalone CLI Execution
         run: |
-          slopguard --version
-          slopguard --help
-          slopguard info
+          slopwatch --version
+          slopwatch --help
+          slopwatch info

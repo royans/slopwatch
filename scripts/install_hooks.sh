@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Git pre-commit hook in SlopGuard repository
+# Install Git pre-commit hook in SlopWatch repository
 set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -13,5 +13,5 @@ fi
 cp "$REPO_ROOT/.githooks/pre-commit" "$HOOK_DIR/pre-commit"
 chmod +x "$HOOK_DIR/pre-commit"
 
-echo "✅ SlopGuard pre-commit hook installed successfully into: $HOOK_DIR/pre-commit"
+echo "✅ SlopWatch pre-commit hook installed successfully into: $HOOK_DIR/pre-commit"
 echo "   Every 'git commit' will now automatically block secrets, local paths, and AI instructions."
