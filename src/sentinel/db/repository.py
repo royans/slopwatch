@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Database Repository.
+Sentinel Database Repository.
 
 Data access layer providing asynchronous high-throughput CRUD operations,
 bulk catalog syncing, and O(1) watchlist matching.
@@ -381,7 +381,7 @@ class SentinelRepository:
                 existing_model.analysis_details_json = json.dumps(detection.analysis_details)
                 existing_model.content_hash = content_hash
                 existing_model.updated_at = now_second
-                existing_model.is_exported_to_flagthis = False
+                existing_model.is_exported = False
                 existing_model.has_install_hook = has_install_hook
                 existing_model.has_network_socket = has_network_socket
                 existing_model.is_deprecated = is_deprecated
@@ -409,7 +409,7 @@ class SentinelRepository:
                 published_at=detection.published_at.replace(microsecond=0) if detection.published_at else now_second,
                 threat_score=detection.threat_score,
                 analysis_details_json=json.dumps(detection.analysis_details),
-                is_exported_to_flagthis=detection.is_exported_to_flagthis,
+                is_exported=detection.is_exported,
                 verdict=detection.verdict.value,
                 content_hash=content_hash,
                 audit_count=1,
@@ -662,7 +662,7 @@ class SentinelRepository:
             published_at=_ensure_utc(r.published_at),
             threat_score=r.threat_score,
             analysis_details=json.loads(r.analysis_details_json or "{}"),
-            is_exported_to_flagthis=r.is_exported_to_flagthis,
+            is_exported=r.is_exported,
             verdict=ThreatVerdict(r.verdict),
             content_hash=r.content_hash,
             audit_count=r.audit_count or 1,
@@ -704,7 +704,7 @@ class SentinelRepository:
                 published_at=_ensure_utc(r.published_at),
                 threat_score=r.threat_score,
                 analysis_details=json.loads(r.analysis_details_json or "{}"),
-                is_exported_to_flagthis=r.is_exported_to_flagthis,
+                is_exported=r.is_exported,
                 verdict=ThreatVerdict(r.verdict),
                 content_hash=r.content_hash,
                 audit_count=r.audit_count or 1,
@@ -1046,7 +1046,7 @@ class SentinelRepository:
                 published_at=_ensure_utc(r.published_at),
                 threat_score=r.threat_score,
                 analysis_details=json.loads(r.analysis_details_json or "{}"),
-                is_exported_to_flagthis=r.is_exported_to_flagthis,
+                is_exported=r.is_exported,
                 verdict=ThreatVerdict(r.verdict),
                 content_hash=r.content_hash,
                 audit_count=r.audit_count or 1,
@@ -1062,8 +1062,8 @@ class SentinelRepository:
         ]
 
     async def get_unexported_detections(self) -> List[SquatDetection]:
-        """Fetch detections not yet synced to FlagThis.com static export."""
-        query = select(SquatDetectionModel).where(SquatDetectionModel.is_exported_to_flagthis == False)
+        """Fetch detections not yet marked as exported."""
+        query = select(SquatDetectionModel).where(SquatDetectionModel.is_exported == False)
         result = await self.session.execute(query)
         rows = result.scalars().all()
         return [
@@ -1077,7 +1077,7 @@ class SentinelRepository:
                 published_at=_ensure_utc(r.published_at),
                 threat_score=r.threat_score,
                 analysis_details=json.loads(r.analysis_details_json or "{}"),
-                is_exported_to_flagthis=r.is_exported_to_flagthis,
+                is_exported=r.is_exported,
                 verdict=ThreatVerdict(r.verdict),
                 content_hash=r.content_hash,
                 audit_count=r.audit_count or 1,
@@ -1099,7 +1099,7 @@ class SentinelRepository:
         stmt = (
             update(SquatDetectionModel)
             .where(SquatDetectionModel.detection_id.in_(detection_ids))
-            .values(is_exported_to_flagthis=True)
+            .values(is_exported=True)
         )
 
         async def _do():

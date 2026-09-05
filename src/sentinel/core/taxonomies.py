@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Curated Taxonomies.
+Sentinel Curated Taxonomies.
 
 Defines the multi-ecosystem vocabulary for generating long-tail composable
 package candidate spaces across Entities, Capabilities, and Frameworks.

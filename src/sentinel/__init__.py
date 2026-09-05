@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel (Project SpectreCatch)
+Sentinel (Project SpectreCatch)
 Zero-LLM Multi-Ecosystem Long-Tail AI Package Squatting Detection Engine.
 """
 
@@ -19,7 +19,7 @@ from sentinel.adapters import get_adapter
 from sentinel.matrix.generator import generate_ecosystem_candidates, filter_unregistered_candidates
 from sentinel.sentinel.monitor import InboundTripwireMonitor
 from sentinel.linter.lockfile import DependencyLinter
-from sentinel.exporter.flagthis import FlagThisExporter
+from sentinel.exporter.dossier import DossierExporter
 
 __version__ = "0.2.0"
 
@@ -39,5 +39,5 @@ __all__ = [
     "filter_unregistered_candidates",
     "InboundTripwireMonitor",
     "DependencyLinter",
-    "FlagThisExporter",
+    "DossierExporter",
 ]

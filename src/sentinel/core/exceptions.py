@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Exceptions.
+Sentinel Exceptions.
 """
 
 

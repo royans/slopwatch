@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Database ORM Models.
+Sentinel Database ORM Models.
 """
 
 from datetime import datetime, timezone
@@ -81,7 +81,7 @@ class SquatDetectionModel(Base):
     published_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc).replace(microsecond=0), index=True)
     threat_score = Column(Integer, nullable=False, default=0)
     analysis_details_json = Column(Text, nullable=True)
-    is_exported_to_flagthis = Column(Boolean, nullable=False, default=False)
+    is_exported = Column(Boolean, nullable=False, default=False)
     verdict = Column(String(32), nullable=False, default="MALICIOUS")
     content_hash = Column(String(64), nullable=True)
     priority_tier = Column(Integer, nullable=False, default=2)

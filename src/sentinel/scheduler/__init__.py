@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Scheduler and Priority Crawling Subsystem.
+Sentinel Scheduler and Priority Crawling Subsystem.
 """
 
 from sentinel.scheduler.freshness import calculate_freshness_interval_days, calculate_next_audit_time

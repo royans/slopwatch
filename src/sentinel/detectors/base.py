@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel — Detector plugin framework.
+Sentinel — Detector plugin framework.
 
 A **detector** is a self-contained unit that inspects one package and emits
 ``Finding`` objects. Detectors live in ``sentinel.detectors.*`` and register

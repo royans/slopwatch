@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Multi-Tiered Priority Crawl Queue.
+Sentinel Multi-Tiered Priority Crawl Queue.
 
 Orchestrates ingestion tasks across four distinct priority tiers:
 - Tier 1 (Weight 1000): Brand new inbound releases observed on registry stream.

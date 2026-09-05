@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Data Transfer Objects (DTOs) & Enums.
+Sentinel Data Transfer Objects (DTOs) & Enums.
 
 Defines the multi-ecosystem data structures for tracking packages,
 watchlist candidates, security analysis results, and threat detections.
@@ -164,7 +164,7 @@ class SquatDetection(BaseModel):
     last_audited_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(microsecond=0))
     threat_score: int = Field(default=0, ge=0, le=1000)
     analysis_details: Dict[str, Any] = Field(default_factory=dict)
-    is_exported_to_flagthis: bool = False
+    is_exported: bool = False
     verdict: ThreatVerdict = ThreatVerdict.SUSPICIOUS
     content_hash: Optional[str] = None
     priority_tier: int = 2

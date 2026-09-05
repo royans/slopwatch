@@ -3,12 +3,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flagthis-sentinel"
+name = "sentinel"
 version = "0.1.0"
 description = "High-throughput deterministic supply chain malware, typosquatting, and AI hallucination detection engine."
 readme = "README.md"
 authors = [
-    { name = "FlagThis Security Research Team", email = "security@flagthis.com" },
+    { name = "Royans K" },
 ]
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
@@ -62,10 +62,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://flagthis.com"
-Documentation = "https://flagthis.com/docs/sentinel"
-Repository = "https://github.com/flagthis/sentinel"
-Issues = "https://github.com/flagthis/sentinel/issues"
+Homepage = "https://github.com/royans/sentinel/"
+Documentation = "https://github.com/royans/sentinel/#readme"
+Repository = "https://github.com/royans/sentinel/"
+Issues = "https://github.com/royans/sentinel/issues"
 
 [project.scripts]
 sentinel = "sentinel.cli:main"

@@ -204,7 +204,7 @@ def has_install_time_code_execution(flags: List[str]) -> bool:
     top-level install-time exec, cmdclass override, install-time network socket,
     dynamic-obfuscation access, or npm lifecycle script, regardless of whether a
     specific dangerous shell pattern was matched inside it. Populates the
-    `has_install_hook` field synced to FlagThis.com's indexed downstream column.
+    `has_install_hook` field synced to downstream indexed column.
     """
     return any(f.startswith(CODE_EXECUTION_FLAG_PREFIXES) for f in flags)
 

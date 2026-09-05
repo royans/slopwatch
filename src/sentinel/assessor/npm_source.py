@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel npm Tarball Source Code Inspector.
+Sentinel npm Tarball Source Code Inspector.
 
 Downloads and pattern-scans the actual JS/TS source inside an npm tarball for
 dangerous runtime behavior, closing the gap where package.json only declares

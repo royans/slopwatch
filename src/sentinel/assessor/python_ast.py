@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Python AST Static Malware Inspector.
+Sentinel Python AST Static Malware Inspector.
 
 Performs non-invasive AST parsing on package tarballs to detect malicious
 installation hooks in setup.py and pyproject.toml while eliminating false positives

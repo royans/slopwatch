@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Inbound Feed Tripwire Monitor.
+Sentinel Inbound Feed Tripwire Monitor.
 
 Polls registry new-package streams, executes O(1) in-memory watchlist matching,
 and triggers automatic static malware inspection upon detection.

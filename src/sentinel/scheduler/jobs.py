@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Persistent Job Queue Manager.
+Sentinel Persistent Job Queue Manager.
 
 Provides crash-resilient asynchronous job enqueueing, lease-based batch execution,
 and bounded time-budget workers for re-evaluations, metadata refreshes, and AST backfills.
@@ -538,7 +538,7 @@ class JobQueueManager:
                             needs_reprocess = 0,
                             refresh_network_data = 0,
                             reprocess_reason = NULL,
-                            is_exported_to_flagthis = 0,
+                            is_exported = 0,
                             updated_at = ?
                         WHERE ecosystem = ? AND package_name = ?
                         """,

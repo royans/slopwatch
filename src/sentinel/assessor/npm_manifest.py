@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel npm Manifest Security Inspector.
+Sentinel npm Manifest Security Inspector.
 
 Inspects package.json metadata and lifecycle installation scripts (preinstall,
 install, postinstall) for malicious shell execution and download cradles.

@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel — Unified Signal Model & Catalog.
+Sentinel — Unified Signal Model & Catalog.
 
 This module is the single source of truth for *what a detection signal is*. Every
 detector (``sentinel.detectors``) and the progressive scorer emit ``Finding``
@@ -13,9 +13,9 @@ Design goals (see docs/internal/DETECTION_ENGINE_DESIGN.md):
    ``sentinel_signal_catalog`` to render labels/badges dynamically.
 2. **Facts vs. analysis stays explicit.** ``Finding.kind`` distinguishes an
    ``OBSERVATION`` (observable ground truth) from an ``ASSESSMENT``
-   (heuristic interpretation) — the same separation the FlagThis exporter enforces.
+   (heuristic interpretation) — the same separation the dossier exporter enforces.
 3. **Backward compatibility.** ``findings_to_legacy_facets()`` projects a finding
-   list back onto the flat ``ui_facets`` boolean keys the current FlagThis.com
+   list back onto the flat ``ui_facets`` boolean keys the web
    frontend already consumes, so nothing downstream breaks on day one.
 
 The catalog intentionally covers *every* flag string and ``EvidenceSignal`` id the
@@ -64,7 +64,7 @@ class FindingKind(str, Enum):
 # ==================== Signal Catalog ====================
 
 # Coarse signal families. Mirrors Socket.dev's grouping (Supply Chain Risk /
-# Malware / Provenance / Quality) so the FlagThis UI sidebar can group facets.
+# Malware / Provenance / Quality) so the UI sidebar can group facets.
 class SignalCategory(str, Enum):
     MALWARE = "MALWARE"                    # confirmed weaponised behaviour
     CODE_EXECUTION = "CODE_EXECUTION"      # can run code at install/deploy time
@@ -89,7 +89,7 @@ class SignalSpec(BaseModel):
     severity: str = Severity.MEDIUM.value
     default_score: int = 0
     kind: str = FindingKind.ASSESSMENT.value
-    # UI hints (consumed by FlagThis.com via ``sentinel_signal_catalog``)
+    # UI hints (consumed by downstream web UI via ``sentinel_signal_catalog``)
     ui_badge: Optional[str] = None
     ui_facet: Optional[str] = None          # legacy flat ui_facets.* key, if any
     # Behavioural classification (replaces scorer.py's prefix tuples)
@@ -502,7 +502,7 @@ def build_findings(
     return list(by_code.values())
 
 
-# Legacy flat ``ui_facets`` boolean keys the current FlagThis.com frontend reads.
+# Legacy flat ``ui_facets`` boolean keys the web frontend reads.
 # Derived from the catalog's ``ui_facet`` field plus a couple of computed ones.
 _LEGACY_FACET_CODES: Dict[str, List[str]] = {}
 for _c, _s in SIGNAL_CATALOG.items():

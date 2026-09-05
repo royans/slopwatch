@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel npm Registry Adapter.
+Sentinel npm Registry Adapter.
 
 Provides streaming catalog ingestion, CouchDB changes feed parsing,
 registry metadata retrieval, and package.json lifecycle script analysis for npm/Node.js,

@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Security Assessors.
+Sentinel Security Assessors.
 """
 
 from sentinel.assessor.python_ast import analyze_python_package_tarball, inspect_python_code_ast

@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Configuration Manager.
+Sentinel Configuration Manager.
 """
 
 import os
@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 
 class AppConfig(BaseModel):
-    name: str = "flagthis_sentinel"
+    name: str = "sentinel"
     version: str = "0.1.0"
     env: str = "development"
     log_level: str = "INFO"

@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel — Detection Engine.
+Sentinel — Detection Engine.
 
 Runs every applicable plugin detector over a ``PackageContext`` and returns their
 findings. Each detector runs behind its own try/except and timeout so a slow or

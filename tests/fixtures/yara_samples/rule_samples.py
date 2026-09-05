@@ -1,5 +1,5 @@
 """
-Actual package code samples (sanitized fixtures) for all FlagThis Sentinel YARA rules.
+Actual package code samples (sanitized fixtures) for all Sentinel YARA rules.
 Provides positive validation samples derived from real malicious packages / advisories
 and negative validation samples from legitimate, popular open-source packages.
 """
@@ -472,7 +472,7 @@ BENIGN_NEGATIVE_SAMPLES = {
     from fastapi import FastAPI, Depends, HTTPException, status
     from pydantic import BaseModel
 
-    app = FastAPI(title="FlagThis Sentinel API", version="1.0.0")
+    app = FastAPI(title="Sentinel API", version="1.0.0")
 
     class HealthResponse(BaseModel):
         status: str

@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Multi-Ecosystem Lockfile & Dependency Linter.
+Sentinel Multi-Ecosystem Lockfile & Dependency Linter.
 
 Audits requirements.txt, pyproject.toml, Pipfile, poetry.lock, package.json,
 package-lock.json, yarn.lock, and pnpm-lock.yaml for hallucinated, unregistered,

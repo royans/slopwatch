@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel — High-Performance YARA Scanning Engine.
+Sentinel — High-Performance YARA Scanning Engine.
 
 Compiles and executes declarative YARA rules against package file contents,
 replacing sequential Python regex searches with a single-pass bytecode engine.

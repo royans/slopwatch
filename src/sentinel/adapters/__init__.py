@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Registry Adapters.
+Sentinel Registry Adapters.
 """
 
 from sentinel.adapters.base import BaseRegistryAdapter

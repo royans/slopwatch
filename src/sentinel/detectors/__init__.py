@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel detector plugins.
+Sentinel detector plugins.
 
 Drop a new module in this package, decorate a ``Detector`` subclass with
 ``@register_detector``, and it is discovered and run automatically — no changes

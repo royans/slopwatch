@@ -1,14 +1,15 @@
-# 🛡️ FlagThis Sentinel
+# 🛡️ Sentinel: Supply Chain Malware & Squatting Auditor
 
-[![Sentinel CI](https://github.com/flagthis/sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/flagthis/sentinel/actions/workflows/ci.yml)
-[![PyPI version](https://img.shields.io/pypi/v/flagthis-sentinel.svg)](https://pypi.org/project/flagthis-sentinel/)
-[![Python Version](https://img.shields.io/pypi/pyversions/flagthis-sentinel.svg)](https://pypi.org/project/flagthis-sentinel/)
+[![Sentinel CI](https://github.com/royans/sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/royans/sentinel/actions/workflows/ci.yml)
+[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://github.com/royans/sentinel/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Engine](https://img.shields.io/badge/Core-Zero--LLM%20Deterministic-green.svg)](#architecture)
 
-**FlagThis Sentinel** is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
+**Sentinel** is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
 
 Designed for developers, DevSecOps pipelines, and security research teams, Sentinel operates within the **Adversary Exploitation Window (AEW)**—identifying weaponized packages, deceptive brand squats, and phantom dependencies before they are installed.
+
+> **Background & Live Demo**: Sentinel was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
 
 ---
 
@@ -24,19 +25,17 @@ Designed for developers, DevSecOps pipelines, and security research teams, Senti
 
 ---
 
-## 🚀 Installation
+## 🚀 Installation & Quickstart
 
-Install FlagThis Sentinel via pip:
-
-```bash
-pip install flagthis-sentinel
-```
-
-Or install from source for development:
+Clone the repository directly from GitHub:
 
 ```bash
-git clone https://github.com/flagthis/sentinel.git
+git clone https://github.com/royans/sentinel.git
 cd sentinel
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 pip install -e .
 ```
 
@@ -147,14 +146,17 @@ print(f"Risk score: {result.score}")
                               ▼
 ┌───────────────────────────────────────────────────────────┐
 │             Output: Structured JSON / Terminal CLI        │
-└───────────────────────────────────────────────────────────┘
+└─────────────────────────────┬─────────────────────────────┘
+                              │
+                              ▼
+     (Live community audits indexed at https://flagthis.com)
 ```
 
 ---
 
 ## 🔒 Security & Safe Execution Guarantee
 
-FlagThis Sentinel is strictly a **zero-dynamic-execution** static engine:
+Sentinel is strictly a **zero-dynamic-execution** static engine:
 * It **never** executes package installation scripts (`setup.py`, `install`, `postinstall`).
 * It **never** imports arbitrary untrusted third-party code into the runtime interpreter.
 * Tarball unpacking is guarded by path traversal protections (`strip_components`, safe paths) and bounded archive limits.

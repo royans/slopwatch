@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel PyPI Registry Adapter.
+Sentinel PyPI Registry Adapter.
 
 Provides streaming catalog ingestion, real-time RSS feed parsing,
 JSON metadata retrieval, and tarball AST security analysis for Python/PyPI,
@@ -138,7 +138,7 @@ class PyPIAdapter(BaseRegistryAdapter):
     async def fetch_download_stats(self, session: aiohttp.ClientSession, package_name: str) -> tuple[int, int, int]:
         """Fetch real-world download counts (monthly, weekly, daily) from PyPI Stats API with rate-limit backoff."""
         stats_url = f"https://pypistats.org/api/packages/{package_name}/recent"
-        headers = {"User-Agent": "FlagThisSentinel/1.0 (security-research@flagthis.com)"}
+        headers = {"User-Agent": "Sentinel/1.0 (+https://github.com/royans/sentinel)"}
         
         for attempt in range(3):
             try:
@@ -173,7 +173,7 @@ class PyPIAdapter(BaseRegistryAdapter):
         xml_req = xmlrpc.client.dumps((max(1, serial - 1),), "changelog_since_serial")
         headers = {
             "Content-Type": "text/xml",
-            "User-Agent": "FlagThisSentinel/1.0 (security-research@flagthis.com)",
+            "User-Agent": "Sentinel/1.0 (+https://github.com/royans/sentinel)",
         }
         try:
             # PyPI XML-RPC endpoint is hosted at https://pypi.org/pypi

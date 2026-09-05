@@ -22,7 +22,7 @@ def temp_db(tmp_path):
         threat_score INTEGER NOT NULL,
         verdict TEXT NOT NULL,
         analysis_details_json TEXT,
-        is_exported_to_flagthis INTEGER DEFAULT 0,
+        is_exported INTEGER DEFAULT 0,
         needs_reprocess INTEGER DEFAULT 0,
         refresh_network_data INTEGER DEFAULT 0,
         reprocess_priority INTEGER DEFAULT 100,

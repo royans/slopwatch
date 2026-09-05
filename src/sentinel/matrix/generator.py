@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Composable Cartesian Matrix Generator.
+Sentinel Composable Cartesian Matrix Generator.
 
 Generates the multi-ecosystem long-tail candidate space across Entities,
 Capabilities, and Frameworks, and computes the high-risk unregistered watchlist.

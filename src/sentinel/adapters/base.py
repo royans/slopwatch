@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Base Registry Adapter Interface.
+Sentinel Base Registry Adapter Interface.
 """
 
 from abc import ABC, abstractmethod

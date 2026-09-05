@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Matrix Package.
+Sentinel Matrix Package.
 """
 
 from sentinel.matrix.generator import (

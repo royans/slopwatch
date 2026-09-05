@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Normalization Utilities.
+Sentinel Normalization Utilities.
 
 Provides robust extraction and normalization for email addresses, domains,
 package names, and metadata strings.

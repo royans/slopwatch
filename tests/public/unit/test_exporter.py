@@ -4,11 +4,11 @@ from pathlib import Path
 from sentinel.core.dto import Ecosystem, ThreatVerdict, SquatDetection
 from sentinel.db.engine import DatabaseManager
 from sentinel.db.repository import SentinelRepository
-from sentinel.exporter.flagthis import FlagThisExporter
+from sentinel.exporter.dossier import DossierExporter
 
 
 @pytest.mark.asyncio
-async def test_flagthis_exporter_skips_benign_community(tmp_path: Path):
+async def test_dossier_exporter_skips_benign_community(tmp_path: Path):
     """
     BENIGN_COMMUNITY detections carry no security signal and shouldn't get a public
     dossier, search-index entry, or author-index inclusion. A stale dossier from a
@@ -48,7 +48,7 @@ async def test_flagthis_exporter_skips_benign_community(tmp_path: Path):
         stale_dossier = stale_dir / "unrelated-benign-lib.md"
         stale_dossier.write_text("stale content", encoding="utf-8")
 
-        exporter = FlagThisExporter(repo, output_dir=tmp_path)
+        exporter = DossierExporter(repo, output_dir=tmp_path)
         stats = await exporter.export_all()
 
         assert stats["total_dossiers_generated"] == 1  # only the suspicious one
@@ -67,7 +67,7 @@ async def test_flagthis_exporter_skips_benign_community(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_flagthis_exporter_search_index_alias_is_symlink_not_duplicate(tmp_path: Path):
+async def test_dossier_exporter_search_index_alias_is_symlink_not_duplicate(tmp_path: Path):
     """
     all_packages_index.json must be a symlink alias to package_search_index.json,
     not a second full copy — both were previously written with byte-identical
@@ -87,7 +87,7 @@ async def test_flagthis_exporter_search_index_alias_is_symlink_not_duplicate(tmp
         )
         await repo.record_detection(detection)
 
-        exporter = FlagThisExporter(repo, output_dir=tmp_path)
+        exporter = DossierExporter(repo, output_dir=tmp_path)
         await exporter.export_all()
 
         primary = tmp_path / "search" / "package_search_index.json"
@@ -100,7 +100,7 @@ async def test_flagthis_exporter_search_index_alias_is_symlink_not_duplicate(tmp
 
 
 @pytest.mark.asyncio
-async def test_flagthis_exporter_handles_scoped_npm_packages(tmp_path: Path):
+async def test_dossier_exporter_handles_scoped_npm_packages(tmp_path: Path):
     """
     Regression test: a scoped npm package name (e.g. "@scope/name") contains a '/'
     which implies a dossier subdirectory ("dossiers/npm/@scope/name.md") that doesn't
@@ -125,7 +125,7 @@ async def test_flagthis_exporter_handles_scoped_npm_packages(tmp_path: Path):
         )
         await repo.record_detection(detection)
 
-        exporter = FlagThisExporter(repo, output_dir=tmp_path)
+        exporter = DossierExporter(repo, output_dir=tmp_path)
         stats = await exporter.export_all()  # must not raise FileNotFoundError
 
         assert stats["total_dossiers_generated"] == 1
@@ -137,7 +137,7 @@ async def test_flagthis_exporter_handles_scoped_npm_packages(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_flagthis_exporter(tmp_path: Path):
+async def test_dossier_exporter(tmp_path: Path):
     db = DatabaseManager(database_url="sqlite+aiosqlite:///:memory:", wal_mode=False)
     await db.init_db()
 
@@ -160,7 +160,7 @@ async def test_flagthis_exporter(tmp_path: Path):
         )
         await repo.record_detection(detection)
 
-        exporter = FlagThisExporter(repo, output_dir=tmp_path)
+        exporter = DossierExporter(repo, output_dir=tmp_path)
         stats = await exporter.export_all()
 
         assert stats["total_dossiers_generated"] == 1
@@ -232,7 +232,7 @@ async def test_flagthis_exporter(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_flagthis_exporter_skips_deprecated_packages(tmp_path: Path):
+async def test_dossier_exporter_skips_deprecated_packages(tmp_path: Path):
     """
     Packages officially deprecated/yanked by upstream registry carry no active
     security signal and should be skipped from export, and any stale dossier cleaned up.
@@ -258,7 +258,7 @@ async def test_flagthis_exporter_skips_deprecated_packages(tmp_path: Path):
         stale_dossier.parent.mkdir(parents=True, exist_ok=True)
         stale_dossier.write_text("old stale dossier content")
 
-        exporter = FlagThisExporter(repo, output_dir=tmp_path)
+        exporter = DossierExporter(repo, output_dir=tmp_path)
         stats = await exporter.export_all()
 
         assert stats["skipped_benign_count"] >= 1

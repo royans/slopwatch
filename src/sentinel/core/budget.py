@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Token Budget Limiter.
+Sentinel Token Budget Limiter.
 
 Enforces strict hourly quotas on LLM token consumption and gracefully yields
 when approaching the safety threshold (default 90% of cycle allocation).

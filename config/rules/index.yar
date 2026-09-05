@@ -1,4 +1,4 @@
-/* Master YARA Rules Index for FlagThis Sentinel */
+/* Master YARA Rules Index for Sentinel */
 include "./exfiltration.yar"
 include "./credentials.yar"
 include "./execution.yar"

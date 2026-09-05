@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Database Engine.
+Sentinel Database Engine.
 
 Configures asynchronous SQLAlchemy with SQLite WAL mode and busy timeouts.
 """

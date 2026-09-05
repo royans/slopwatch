@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Continuous Crawler Worker.
+Sentinel Continuous Crawler Worker.
 
 Asynchronously coordinates priority ingestion, brand crawling, dynamic
 exponential freshness scheduling, and registry rate limiting.

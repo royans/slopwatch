@@ -1,5 +1,5 @@
 """
-FlagThis Sentinel Local Disk Cache Manager.
+Sentinel Local Disk Cache Manager.
 
 Provides zero-network caching for upstream package catalogs, registry metadata,
 and downloaded tarball payloads with configurable TTL and eviction policies.
