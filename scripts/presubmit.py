@@ -67,6 +67,8 @@ BLOCKED_PATH_PATTERNS = [
     (r"(?:^|/)id_rsa.*", "SSH Private Key (id_rsa)"),
     (r"(?:^|/)id_ed25519.*", "SSH Private Key (id_ed25519)"),
     (r"^src/sentinel/integrations/flagthis(?:/|$)", "Proprietary Enterprise FlagThis Integration"),
+    (r".*(?:mysql|mariadb).*", "Forbidden Database File or Script (MySQL/MariaDB)"),
+    (r".*\.sql$", "Forbidden SQL Script File (.sql)"),
 ]
 
 # 3. Secret & Credential Patterns (Regex patterns)
@@ -100,7 +102,8 @@ INTERNAL_PATTERNS = [
     (r"flagthis\.corp\b", "Internal Domain (flagthis.corp)"),
     (r"royans@gmail\.com", "Private Personal Email"),
     (r"#\s*(?:INTERNAL|PRIVATE|CONFIDENTIAL)\b", "Internal Tag Marker"),
-    (r"\b(?i:mariadb)\b", "Forbidden Keyword: MariaDB"),
+    (r"\b(?i:mysql)\b", "Forbidden Database Keyword: MySQL"),
+    (r"\b(?i:mariadb)\b", "Forbidden Database Keyword: MariaDB"),
     (r"\b(?i:aiomysql)\b", "Forbidden Keyword: AioMySQL"),
     (r"\b(?i:pymysql)\b", "Forbidden Keyword: PyMySQL"),
     (r"\bsentinel_schema_version\b", "Internal Table Keyword"),
@@ -116,6 +119,9 @@ FORBIDDEN_IMPORTS = [
     "aiomysql",
     "pymysql",
     "mariadb",
+    "mysql",
+    "mysql.connector",
+    "mysqldb",
 ]
 
 
