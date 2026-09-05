@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Local Environment & Secrets
+.env
+.env.local
+*.key
+*.pem
+*.secret
+config/internal_config.yaml
+config/secrets*.yaml
+config/*private*
+
+# Local data & persistence
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/cache/
+.sentinel_cache/
+cache/
+**/.cache/
+logs/*.log
+
+# Runtime Generated Reports & FlagThis Export Artifacts
+reports/flagthis_export/
+reports/*.json
+reports/*.jsonl
+reports/*.md
+reports/private/
+docs/internal/private/
+
+# Local Public Mirror Staging
+/external/
+
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/

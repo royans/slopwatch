@@ -1,0 +1,42 @@
+# FlagThis Sentinel Configuration
+
+app:
+  name: "flagthis_sentinel"
+  version: "0.1.0"
+  env: "development"
+  log_level: "INFO"
+
+storage:
+  database_url: "sqlite+aiosqlite:///data/sentinel.db"
+  wal_mode: true
+
+elicitor:
+  # LLM configuration
+  provider: "gemini" # gemini | openai | anthropic | ollama
+  model: "gemini-2.5-flash"
+  temperature: 0.7
+  
+  # Recurrence mathematics
+  iterations_n: 10
+  recurrence_threshold: 0.60 # >= 60%
+  
+  # Token budget protection (Max tokens per hourly cron cycle)
+  max_hourly_tokens: 50000
+  budget_pause_threshold_pct: 0.90 # Pause when 90% of cycle tokens are consumed
+
+sentinel:
+  # Certificate Transparency query settings
+  crt_sh_url: "https://crt.sh/"
+  concurrency_limit: 2
+  request_timeout_seconds: 30
+  retry_backoff_base_seconds: 2
+  retry_max_seconds: 30
+  max_retries: 3
+
+assessor:
+  # Passive OSINT & Dormancy Assessment
+  dns_timeout_seconds: 5.0
+  http_timeout_seconds: 10.0
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  signatures_path: "config/signatures/parking_hashes.json"
+  alert_score_threshold: 70

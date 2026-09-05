@@ -1,0 +1,24 @@
+{
+  "known_parking_providers": [
+    {
+      "provider": "GoDaddy Parking",
+      "dom_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature_keywords": ["parked free, courtesy of godaddy", "buy this domain", "godaddy domain parking"]
+    },
+    {
+      "provider": "Sedo Domain Parking",
+      "dom_sha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+      "signature_keywords": ["sedoparking.com", "the domain is parked with sedo", "sedo domain parking"]
+    },
+    {
+      "provider": "Namecheap Parking",
+      "dom_sha256": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+      "signature_keywords": ["namecheap.com", "this domain is registered at namecheap", "parked at namecheap"]
+    },
+    {
+      "provider": "Dan.com Parking",
+      "dom_sha256": "c8bb7a04944d18ec339ff3f3cfd421d019313936a940aa41e8f237190d7be76f",
+      "signature_keywords": ["dan.com", "buy this domain on dan.com", "this domain is for sale"]
+    }
+  ]
+}
