@@ -110,11 +110,13 @@ class DatabaseManager:
                         cursor.execute("ALTER TABLE registered_packages ADD COLUMN matches_grammar BOOLEAN NOT NULL DEFAULT 0;")
                         cursor.execute("CREATE INDEX IF NOT EXISTS idx_registered_grammar_backfill ON registered_packages (ecosystem, matches_grammar, crawled_at);")
 
-                    # 3. sentinel_jobs_queue migrations
-                    cursor.execute("PRAGMA table_info(sentinel_jobs_queue);")
-                    job_cols = {row[1] for row in cursor.fetchall()}
-                    if "refresh_network_data" not in job_cols:
-                        cursor.execute("ALTER TABLE sentinel_jobs_queue ADD COLUMN refresh_network_data BOOLEAN NOT NULL DEFAULT 0;")
+                    # 3. findings table migration and compatibility view
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sentinel_findings';")
+                    if cursor.fetchone():
+                        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='slopguard_findings';")
+                        if not cursor.fetchone():
+                            cursor.execute("ALTER TABLE sentinel_findings RENAME TO slopguard_findings;")
+                    cursor.execute("CREATE VIEW IF NOT EXISTS sentinel_findings AS SELECT * FROM slopguard_findings;")
 
                 except Exception:
                     pass

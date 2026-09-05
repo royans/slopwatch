@@ -1,39 +1,11 @@
 """
-Sentinel Multi-Tiered Priority Crawl Queue.
-
-Orchestrates ingestion tasks across four distinct priority tiers:
-- Tier 1 (Weight 1000): Brand new inbound releases observed on registry stream.
-- Tier 2 (Weight 800): High-risk vendor brand watchlist candidates (Google, Azure, AWS, Okta, etc.).
-- Tier 3 (Weight 500): Scheduled freshness re-audits due for existing database records.
-- Tier 4 (Weight 100): Historical reverse backfill across the 876k+ catalog.
+SlopGuard Priority Brand Entity Weights and Matcher.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
-from enum import Enum
-
-from slopguard.core.dto import Ecosystem
+from typing import Optional, Dict
 from slopguard.core.taxonomies import ENTITIES
 
-# Budget allocation: fraction of crawl slots reserved for packages > 30 days old.
-# Remaining fraction is allocated to recent packages (inbound, brand watchlist, npm).
-OLDER_PACKAGE_BUDGET_PCT = 0.75
-OLDER_PACKAGE_AGE_THRESHOLD_DAYS = 30
-
-
-class TaskPriorityTier(int, Enum):
-    TRACKED_KEYWORD_INBOUND = 1500       # New inbound release matching a tracked keyword/brand
-    NEW_INBOUND_RELEASE = 1000           # Backwards-compatible alias / baseline inbound
-    THREAT_ACTOR_PIVOT = 920             # High-threat actor pivot targets
-    HIGH_RISK_BRAND_WATCHLIST = 800      # Tracked keyword/brand watchlist targets (PyPI & npm)
-    FRESHNESS_REAUDIT_DUE = 500          # Scheduled freshness re-audits for existing detections
-    UNTRACKED_NEW_INBOUND = 300          # New inbound releases with NO tracked keyword match
-    HISTORICAL_CATALOG_BACKFILL = 100    # General catalog backfill (lowest priority)
-
-
-# High-priority enterprise & AI brands to crawl first
-# High-priority enterprise, Crypto & AI brands to crawl first
+# High-priority enterprise, Crypto & AI brands
 PRIORITY_BRAND_WEIGHTS: Dict[str, int] = {
     # 🚨 Top Tier 1: Crypto Companies, Exchanges, Wallets, Chains & DeFi (Top Priority: 990-999)
     "bitcoin": 999,
@@ -134,19 +106,6 @@ PRIORITY_BRAND_WEIGHTS: Dict[str, int] = {
     "discord": 800,
     "shopify": 800,
 }
-
-
-@dataclass(order=True)
-class CrawlTask:
-    priority: int
-    package_name: str = field(compare=False)
-    ecosystem: Ecosystem = field(compare=False)
-    task_type: str = field(compare=False, default="HISTORICAL_BACKFILL")
-    targeted_brand: Optional[str] = field(compare=False, default=None)
-    candidate_id: Optional[str] = field(compare=False, default=None)
-    release_version: Optional[str] = field(compare=False, default=None)
-    published_at: Optional[datetime] = field(compare=False, default=None)
-    context: Dict[str, Any] = field(compare=False, default_factory=dict)
 
 
 def compute_brand_priority(package_name: str) -> Optional[tuple[str, int]]:

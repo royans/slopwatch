@@ -1,5 +1,5 @@
 """
-Sentinel Exponential / Half-Life Freshness Engine.
+SlopGuard Exponential / Half-Life Freshness Engine.
 
 Implements the age-proportional scheduling policy:
 1. Packages <= 10 days old: re-audited every 10 days.

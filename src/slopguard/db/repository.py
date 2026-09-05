@@ -46,7 +46,7 @@ def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
-class SentinelRepository:
+class SlopGuardRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
@@ -86,7 +86,7 @@ class SentinelRepository:
         Bulk upsert full catalog of package names for an ecosystem.
         Uses thread-safe aiosqlite executemany.
         """
-        from slopguard.scheduler.queue import compute_brand_priority
+        from slopguard.core.brands import compute_brand_priority
 
         now_str = datetime.now(timezone.utc).isoformat()
         sql = """
@@ -357,7 +357,7 @@ class SentinelRepository:
         res = await self.session.execute(query)
         existing_model = res.scalars().first()
 
-        from slopguard.scheduler.freshness import calculate_next_audit_time
+        from slopguard.core.freshness import calculate_next_audit_time
 
         pub_dt = detection.published_at or now_second
         next_due = calculate_next_audit_time(pub_dt, last_audited_at=now_second, now_utc=now_second)
@@ -444,7 +444,7 @@ class SentinelRepository:
 
     async def _replace_findings(self, detection: SquatDetection) -> int:
         """
-        Rewrite ``sentinel_findings`` rows for one detection: delete the old set,
+        Rewrite ``slopguard_findings`` rows for one detection: delete the old set,
         insert the current one. Findings-per-package is tiny (< ~30), so a full
         replace is cheaper and simpler than a diff and keeps the table an exact
         materialization of the detection's current signal set.
@@ -503,7 +503,7 @@ class SentinelRepository:
     ) -> List[SquatDetection]:
         """
         Web-UI query: every detection carrying (any|all of) the given signal
-        codes. Runs entirely against the indexed ``sentinel_findings`` table
+        codes. Runs entirely against the indexed ``slopguard_findings`` table
         until the final hydration of ``squat_detections`` rows.
         """
         codes = [c for c in {c.strip() for c in signal_codes} if c]
@@ -586,7 +586,7 @@ class SentinelRepository:
 
     async def backfill_findings(self, batch_size: int = 500) -> Dict[str, int]:
         """
-        Populate ``sentinel_findings`` for every existing detection from its stored
+        Populate ``slopguard_findings`` for every existing detection from its stored
         ``analysis_details_json`` — no re-crawl or network calls. Mirrors
         ``backfill_install_hook_flags``.
         """
@@ -877,7 +877,7 @@ class SentinelRepository:
         the naming-grammar's ongoing maintenance, not automated self-expansion.
         """
         from slopguard.core.taxonomies import ENTITIES, CAPABILITIES, FRAMEWORKS
-        from slopguard.scheduler.queue import PRIORITY_BRAND_WEIGHTS
+        from slopguard.core.brands import PRIORITY_BRAND_WEIGHTS
         from collections import Counter
 
         known_tokens: Set[str] = {t.lower() for t in ENTITIES} | {t.lower() for t in CAPABILITIES}
@@ -941,7 +941,7 @@ class SentinelRepository:
         if now_utc is None:
             now_utc = datetime.now(timezone.utc).replace(microsecond=0)
 
-        from slopguard.scheduler.queue import compute_brand_priority
+        from slopguard.core.brands import compute_brand_priority
         brand_info = compute_brand_priority(package_name)
         is_brand = 1 if brand_info else 0
         score = brand_info[1] if brand_info else 10
@@ -1107,12 +1107,11 @@ class SentinelRepository:
             await self.session.commit()
 
         # This bulk UPDATE is the write most frequently observed colliding with
-        # concurrent crawl-cycle / internal_db_sync.sh writes in production (see
-        # sentinel_cron.log 'database is locked' failures) — retry with backoff.
+        # concurrent crawl / sync writes in production (see 'database is locked' failures) — retry with backoff.
         await self._write_with_retry(_do)
 
 
 
 
-# Alias for SlopGuard namespace
-SlopGuardRepository = SentinelRepository
+# Alias for backward compatibility
+SentinelRepository = SlopGuardRepository

@@ -31,13 +31,17 @@ class ElicitorConfig(BaseModel):
     budget_pause_threshold_pct: float = 0.90
 
 
-class SentinelConfig(BaseModel):
+class SlopGuardConfig(BaseModel):
     crt_sh_url: str = "https://crt.sh/"
     concurrency_limit: int = 2
     request_timeout_seconds: int = 30
     retry_backoff_base_seconds: int = 2
     retry_max_seconds: int = 30
     max_retries: int = 3
+
+
+# Backwards compatibility alias
+SentinelConfig = SlopGuardConfig
 
 
 def _find_default_signatures_path() -> str:
@@ -74,12 +78,12 @@ class Settings(BaseModel):
     app: AppConfig = Field(default_factory=AppConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     elicitor: ElicitorConfig = Field(default_factory=ElicitorConfig)
-    sentinel: SentinelConfig = Field(default_factory=SentinelConfig)
+    slopguard: SlopGuardConfig = Field(default_factory=SlopGuardConfig)
     assessor: AssessorConfig = Field(default_factory=AssessorConfig)
 
     @property
-    def slopguard(self) -> SentinelConfig:
-        return self.sentinel
+    def sentinel(self) -> SlopGuardConfig:
+        return self.slopguard
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "Settings":
@@ -103,9 +107,9 @@ class Settings(BaseModel):
                 if isinstance(loaded, dict):
                     config_dict = loaded
 
-        # Support slopguard: alias for sentinel:
-        if "slopguard" in config_dict and "sentinel" not in config_dict:
-            config_dict["sentinel"] = config_dict["slopguard"]
+        # Support legacy sentinel: key as alias for slopguard:
+        if "sentinel" in config_dict and "slopguard" not in config_dict:
+            config_dict["slopguard"] = config_dict["sentinel"]
 
         # Allow environment variable overrides (SLOPGUARD_* preferred, fallback to SENTINEL_*)
         db_url = os.getenv("SLOPGUARD_DATABASE_URL") or os.getenv("SENTINEL_DATABASE_URL")

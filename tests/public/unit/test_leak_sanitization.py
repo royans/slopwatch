@@ -27,6 +27,8 @@ SECRET_PATTERNS = [
 ]
 
 FORBIDDEN_IMPORTS = [
+    "slopguard.integrations.flagthis",
+    "slopguard.integrations",
     "sentinel.integrations.flagthis",
     "sentinel.integrations",
     "flagthis",
@@ -35,11 +37,8 @@ FORBIDDEN_IMPORTS = [
 ]
 
 PUBLIC_ALLOWLIST_PATTERNS = [
-    r"^src/sentinel/(?!integrations/flagthis/).*\.py$",
-    r"^src/slopguard/.*\.py$",
-    r"^src/sentinel/rules/.*\.yar$",
+    r"^src/slopguard/(?!integrations/flagthis/).*\.py$",
     r"^src/slopguard/rules/.*\.yar$",
-    r"^src/sentinel/signatures/.*\.json$",
     r"^src/slopguard/signatures/.*\.json$",
     r"^tests/public/.*\.py$",
     r"^tests/fixtures/.*(?:\.json|\.py)$",
@@ -124,7 +123,7 @@ class LeakDetector:
 def test_leak_detector_flags_internal_database_credentials():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        test_file = tmp_path / "src" / "sentinel" / "leaked_db.py"
+        test_file = tmp_path / "src" / "slopguard" / "leaked_db.py"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         
         # Test detection of forbidden db keywords
@@ -142,7 +141,7 @@ def test_leak_detector_flags_internal_database_credentials():
 def test_leak_detector_flags_internal_database_password():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        test_file = tmp_path / "src" / "sentinel" / "config.py"
+        test_file = tmp_path / "src" / "slopguard" / "config.py"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         encoded_pw = base64.b64decode(b"ZDBtYWlucjFzayEh").decode("utf-8")
         test_file.write_text(f'PASSWORD = "{encoded_pw}"\n')
@@ -158,9 +157,9 @@ def test_leak_detector_flags_internal_database_password():
 def test_leak_detector_flags_forbidden_internal_database_imports():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        test_file = tmp_path / "src" / "sentinel" / "bad_import.py"
+        test_file = tmp_path / "src" / "slopguard" / "bad_import.py"
         test_file.parent.mkdir(parents=True, exist_ok=True)
-        mod1 = ".".join(["sentinel", "integrations", "flagthis"])
+        mod1 = ".".join(["slopguard", "integrations", "flagthis"])
         test_file.write_text(f"from {mod1} import db_engine\nimport aiomysql\n")
         
         detector = LeakDetector(tmp_path)
@@ -189,8 +188,6 @@ def test_zero_mysql_or_mariadb_mentions_in_public_codebase():
     """Verify that zero database keywords exist across the entire public source tree."""
     root_path = Path(__file__).resolve().parent.parent.parent.parent
     src_dir = root_path / "src" / "slopguard"
-    if not src_dir.exists():
-        src_dir = root_path / "src" / "sentinel"
     
     forbidden_terms = ["mysql", "mariadb", "pymysql", "aiomysql", "sentinel_schema_version"]
     
@@ -219,7 +216,7 @@ def test_public_repo_is_completely_clean():
 
     # Test that internal integration directory is excluded from public allowlist patterns
     import re
-    internal_sample = "src/sentinel/integrations/flagthis/mysql_migrator.py"
+    internal_sample = "src/slopguard/integrations/flagthis/mysql_migrator.py"
     is_allowed = any(re.match(p, internal_sample) for p in PUBLIC_ALLOWLIST_PATTERNS)
     assert is_allowed is False
 
@@ -254,7 +251,7 @@ def test_presubmit_gatekeeper_blocks_agent_workspace_and_skills():
         tmp_path = Path(tmpdir)
         agent_dir = tmp_path / ".agents" / "rules"
         agent_dir.mkdir(parents=True, exist_ok=True)
-        (agent_dir / "sentinel_rules.md").write_text("# Internal rules\n")
+        (agent_dir / "agent_rules.md").write_text("# Internal rules\n")
         (tmp_path / "AGENTS.md").write_text("# Root agents file\n")
 
         gk = PresubmitGatekeeper(root_dir=tmp_path)
@@ -264,15 +261,13 @@ def test_presubmit_gatekeeper_blocks_agent_workspace_and_skills():
         assert len(blocked) >= 2
 
 
-def test_presubmit_gatekeeper_passes_on_clean_sentinel_repo():
-    """Verify that PresubmitGatekeeper succeeds on the actual standalone sentinel repo."""
+def test_presubmit_gatekeeper_passes_on_clean_slopguard_repo():
+    """Verify that PresubmitGatekeeper succeeds on the actual standalone slopguard repo."""
     from scripts.presubmit import PresubmitGatekeeper
 
     base_parent = Path(__file__).resolve().parent.parent.parent.parent.parent
-    sentinel_repo = base_parent / "slopguard"
-    if not sentinel_repo.exists():
-        sentinel_repo = base_parent / "sentinel"
-    if sentinel_repo.exists():
-        gk = PresubmitGatekeeper(root_dir=sentinel_repo)
+    slopguard_repo = base_parent / "slopguard"
+    if slopguard_repo.exists():
+        gk = PresubmitGatekeeper(root_dir=slopguard_repo)
         assert gk.run() is True
 

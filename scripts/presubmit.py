@@ -23,11 +23,8 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 
 # 1. Permitted Public Files & Directories Allowlist (Regex patterns)
 PUBLIC_ALLOWLIST_PATTERNS = [
-    r"^src/sentinel/(?!integrations/flagthis/).*\.py$",
-    r"^src/slopguard/.*\.py$",
-    r"^src/sentinel/rules/.*\.yar$",
+    r"^src/slopguard/(?!integrations/flagthis/).*\.py$",
     r"^src/slopguard/rules/.*\.yar$",
-    r"^src/sentinel/signatures/.*\.json$",
     r"^src/slopguard/signatures/.*\.json$",
     r"^tests/.*\.py$",
     r"^tests/fixtures/.*(?:\.json|\.py)$",
@@ -70,7 +67,7 @@ BLOCKED_PATH_PATTERNS = [
     (r"(?:^|/)\.env(?:$|\..*)", "Environment Variables File (.env)"),
     (r"(?:^|/)id_rsa.*", "SSH Private Key (id_rsa)"),
     (r"(?:^|/)id_ed25519.*", "SSH Private Key (id_ed25519)"),
-    (r"^src/sentinel/integrations/flagthis(?:/|$)", "Proprietary Enterprise FlagThis Integration"),
+    (r"^src/slopguard/integrations/flagthis(?:/|$)", "Proprietary Enterprise FlagThis Integration"),
 ]
 
 # 3. Secret & Credential Patterns (Regex patterns)
@@ -114,6 +111,8 @@ INTERNAL_PATTERNS = [
 
 # 6. Forbidden Python Imports
 FORBIDDEN_IMPORTS = [
+    "slopguard.integrations.flagthis",
+    "slopguard.integrations",
     "sentinel.integrations.flagthis",
     "sentinel.integrations",
     "flagthis",

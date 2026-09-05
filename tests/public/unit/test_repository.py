@@ -273,7 +273,7 @@ async def test_repository_multi_ecosystem_lifecycle():
 
 
 
-# ==================== Modular detection layer (sentinel_findings) ====================
+# ==================== Modular detection layer (slopguard_findings) ====================
 
 @pytest.mark.asyncio
 async def test_record_detection_materializes_findings_rows():

@@ -1,16 +1,16 @@
 """
-Sentinel — Unified Signal Model & Catalog.
+SlopGuard — Unified Signal Model & Catalog.
 
 This module is the single source of truth for *what a detection signal is*. Every
 detector (``slopguard.detectors``) and the progressive scorer emit ``Finding``
 objects that reference a stable ``code`` defined in ``SIGNAL_CATALOG``.
 
-Design goals (see docs/internal/DETECTION_ENGINE_DESIGN.md):
+Design goals:
 
 1. **No schema change per signal.** A ``Finding`` is persisted as a row in the
-   ``sentinel_findings`` table keyed by its string ``code`` — adding a new signal
+   ``slopguard_findings`` table keyed by its string ``code`` — adding a new signal
    never requires an ``ALTER TABLE`` or a new generated column. The web UI reads
-   ``sentinel_signal_catalog`` to render labels/badges dynamically.
+   ``signal_catalog`` to render labels/badges dynamically.
 2. **Facts vs. analysis stays explicit.** ``Finding.kind`` distinguishes an
    ``OBSERVATION`` (observable ground truth) from an ``ASSESSMENT``
    (heuristic interpretation) — the same separation the dossier exporter enforces.
@@ -89,7 +89,7 @@ class SignalSpec(BaseModel):
     severity: str = Severity.MEDIUM.value
     default_score: int = 0
     kind: str = FindingKind.ASSESSMENT.value
-    # UI hints (consumed by downstream web UI via ``sentinel_signal_catalog``)
+    # UI hints (consumed by downstream web UI via ``signal_catalog``)
     ui_badge: Optional[str] = None
     ui_facet: Optional[str] = None          # legacy flat ui_facets.* key, if any
     # Behavioural classification (replaces scorer.py's prefix tuples)
@@ -567,7 +567,7 @@ def findings_from_analysis_details(details: Optional[Dict[str, Any]]) -> List[Fi
 
 
 def catalog_as_rows() -> List[Dict[str, Any]]:
-    """Serialised catalog for ``sentinel_signal_catalog`` / static export."""
+    """Serialised catalog for ``signal_catalog`` / static export."""
     return [
         {
             "signal_code": s.code,

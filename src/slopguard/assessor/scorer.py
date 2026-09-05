@@ -1097,7 +1097,7 @@ class ProgressiveThreatEvaluator:
                         "adoption_tier": adoption_tier,
                     },
                     "signals": [s.model_dump() for s in evidence_signals],
-                    # Unified typed signal layer — persisted to sentinel_findings
+                    # Unified typed signal layer — persisted to slopguard_findings
                     # for query-anywhere UI filtering (see slopguard.core.signals).
                     "findings": [
                         f.model_dump(mode="json")

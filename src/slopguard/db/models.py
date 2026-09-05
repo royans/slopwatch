@@ -133,7 +133,7 @@ class SignalFindingModel(Base):
     parent detection so a single-facet filtered + sorted feed query never has to
     touch ``squat_detections`` until it hydrates the final page of rows.
     """
-    __tablename__ = "sentinel_findings"
+    __tablename__ = "slopguard_findings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     detection_id = Column(String(36), ForeignKey("squat_detections.detection_id", ondelete="CASCADE"), nullable=False)
@@ -197,31 +197,6 @@ class DailyReviewLogModel(Base):
 
     __table_args__ = (
         Index("idx_daily_review_date", "review_date"),
-    )
-
-
-class PersistentJobQueueModel(Base):
-    __tablename__ = "sentinel_jobs_queue"
-
-    job_id = Column(String(36), primary_key=True)
-    ecosystem = Column(String(32), nullable=False, index=True)
-    package_name = Column(String(255), nullable=False, index=True)
-    job_type = Column(String(64), nullable=False, default="RECALCULATE_SCORE", index=True)
-    priority = Column(Integer, nullable=False, default=100, index=True)
-    status = Column(String(32), nullable=False, default="PENDING", index=True)
-    refresh_network_data = Column(Boolean, nullable=False, default=False)
-    attempts = Column(Integer, nullable=False, default=0)
-    max_attempts = Column(Integer, nullable=False, default=3)
-    leased_until = Column(DateTime(timezone=True), nullable=True, index=True)
-    error_message = Column(Text, nullable=True)
-    payload_json = Column(Text, nullable=True)
-    enqueued_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc).replace(microsecond=0), nullable=False)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-
-    __table_args__ = (
-        UniqueConstraint("ecosystem", "package_name", "job_type", name="uq_job_eco_pkg_type"),
-        Index("idx_jobs_status_priority", "status", "priority", "leased_until"),
-        Index("idx_jobs_pkg", "ecosystem", "package_name"),
     )
 
 
