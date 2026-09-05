@@ -1,5 +1,5 @@
 """
-Sentinel Command Line Interface (CLI).
+SlopGuard Command Line Interface (CLI).
 
 Deterministic Zero-LLM Malware & Supply Chain Security Auditor for Python and JavaScript.
 """
@@ -25,16 +25,16 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="sentinel")
+@click.version_option(version="0.1.0", prog_name="slopguard")
 def cli():
-    """🛡️ Sentinel: Deterministic Supply Chain Malware & Squatting Auditor."""
+    """🛡️ SlopGuard: Deterministic Zero-LLM AI Package Hallucination & Supply Chain Threat Auditor."""
     pass
 
 
 @cli.command("info")
 def info_cmd():
-    """ℹ️ Display Sentinel threat engine status, loaded YARA rules, and signatures."""
-    console.print(Panel("🛡️ [bold cyan]Sentinel Threat Engine[/bold cyan] (v0.1.0)", style="cyan"))
+    """ℹ️ Display SlopGuard threat engine status, loaded YARA rules, and signatures."""
+    console.print(Panel("🛡️ [bold cyan]SlopGuard Threat Engine[/bold cyan] (v0.1.0)", style="cyan"))
     
     scanner = YaraPatternScanner()
     rule_count = len(list(scanner._compiled_rules)) if scanner._compiled_rules else 0
