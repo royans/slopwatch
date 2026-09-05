@@ -2,9 +2,9 @@
 
 import pytest
 
-from sentinel.core.dto import Ecosystem, PackageMetadata, WatchlistCandidate
-from sentinel.core.signals import Finding
-from sentinel.detectors import (
+from slopguard.core.dto import Ecosystem, PackageMetadata, WatchlistCandidate
+from slopguard.core.signals import Finding
+from slopguard.detectors import (
     DetectionEngine,
     Detector,
     PackageContext,
@@ -36,7 +36,7 @@ def test_load_all_detectors_instantiates_registered():
 
 @pytest.mark.asyncio
 async def test_suspicious_description_detector_flags_lure_text():
-    from sentinel.detectors.suspicious_description import SuspiciousDescriptionDetector
+    from slopguard.detectors.suspicious_description import SuspiciousDescriptionDetector
 
     det = SuspiciousDescriptionDetector()
     ctx = PackageContext(
@@ -51,7 +51,7 @@ async def test_suspicious_description_detector_flags_lure_text():
 
 @pytest.mark.asyncio
 async def test_suspicious_description_detector_quiet_on_clean_metadata():
-    from sentinel.detectors.suspicious_description import SuspiciousDescriptionDetector
+    from slopguard.detectors.suspicious_description import SuspiciousDescriptionDetector
 
     det = SuspiciousDescriptionDetector()
     ctx = PackageContext(

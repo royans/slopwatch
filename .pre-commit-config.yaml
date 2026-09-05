@@ -1,9 +1,9 @@
-# Pre-commit configuration for Sentinel
+# Pre-commit configuration for SlopGuard
 repos:
   - repo: local
     hooks:
-      - id: sentinel-presubmit
-        name: Sentinel Leak & AI Instruction Gatekeeper
+      - id: slopguard-presubmit
+        name: SlopGuard Leak & Presubmit Gatekeeper
         entry: python3 scripts/presubmit.py --staged
         language: system
         stages: [commit]

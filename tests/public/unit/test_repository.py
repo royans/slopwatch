@@ -1,14 +1,14 @@
 import pytest
 from datetime import datetime, timezone
-from sentinel.core.dto import (
+from slopguard.core.dto import (
     Ecosystem,
     WatchlistState,
     ThreatVerdict,
     WatchlistCandidate,
     SquatDetection,
 )
-from sentinel.db.engine import DatabaseManager
-from sentinel.db.repository import SentinelRepository
+from slopguard.db.engine import DatabaseManager
+from slopguard.db.repository import SentinelRepository
 
 
 @pytest.mark.asyncio
@@ -34,7 +34,7 @@ async def test_record_detection_persists_install_hook_flags():
         )
         await repo.record_detection(detection)
 
-        from sentinel.db.models import SquatDetectionModel
+        from slopguard.db.models import SquatDetectionModel
         from sqlalchemy import select
         result = await session.execute(select(SquatDetectionModel).where(SquatDetectionModel.package_name == "react-azure-auth-helper"))
         row = result.scalars().first()
@@ -85,7 +85,7 @@ async def test_backfill_install_hook_flags_from_stored_json():
         stats = await repo.backfill_install_hook_flags()
         assert stats["with_install_hook"] == 1
 
-        from sentinel.db.models import SquatDetectionModel
+        from slopguard.db.models import SquatDetectionModel
         from sqlalchemy import select
         result = await session.execute(select(SquatDetectionModel).where(SquatDetectionModel.package_name == "legacy-detection-pkg"))
         row = result.scalars().first()
@@ -303,7 +303,7 @@ async def test_record_detection_materializes_findings_rows():
         )
         await repo.record_detection(detection)
 
-        from sentinel.db.models import SignalFindingModel
+        from slopguard.db.models import SignalFindingModel
         from sqlalchemy import select
         rows = (await session.execute(select(SignalFindingModel))).scalars().all()
         codes = {r.signal_code for r in rows}
@@ -334,7 +334,7 @@ async def test_findings_are_replaced_not_appended_on_reaudit():
             verdict=ThreatVerdict.MALICIOUS,
         ))
 
-        from sentinel.db.models import SignalFindingModel
+        from slopguard.db.models import SignalFindingModel
         from sqlalchemy import select, func
         n1 = (await session.execute(
             select(func.count()).select_from(SignalFindingModel).where(SignalFindingModel.package_name == pkg)
@@ -413,7 +413,7 @@ async def test_get_signal_stats_and_backfill_findings():
         repo = SentinelRepository(session)
 
         # Insert a detection row WITHOUT going through record_detection's findings sync
-        from sentinel.db.models import SquatDetectionModel
+        from slopguard.db.models import SquatDetectionModel
         import json as _json
         session.add(SquatDetectionModel(
             detection_id="d-legacy-1", ecosystem="npm", package_name="legacy-pkg",

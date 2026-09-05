@@ -4,8 +4,8 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, patch
 
-from sentinel.core.dto import Ecosystem, ThreatVerdict, PackageMetadata, ASTSecurityReport
-from sentinel.scheduler.jobs import JobQueueManager
+from slopguard.core.dto import Ecosystem, ThreatVerdict, PackageMetadata, ASTSecurityReport
+from slopguard.scheduler.jobs import JobQueueManager
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ async def test_process_queue_with_time_budget(temp_db, mocker):
     mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
     mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
 
-    with patch("sentinel.adapters.get_adapter", return_value=mock_adapter):
+    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter):
         res = await mgr.process_queue_with_budget(time_budget_seconds=5.0, batch_size=5, concurrency=2)
         assert res["completed_in_run"] == 2
         assert res["PENDING"] == 0
@@ -268,8 +268,8 @@ async def test_network_refresh_evicts_cache(temp_db, mocker):
 
     mock_cache = mocker.MagicMock()
 
-    with patch("sentinel.adapters.get_adapter", return_value=mock_adapter), \
-         patch("sentinel.core.cache.DiskCacheManager.evict_package", mock_cache):
+    with patch("slopguard.adapters.get_adapter", return_value=mock_adapter), \
+         patch("slopguard.core.cache.DiskCacheManager.evict_package", mock_cache):
         res = await mgr.process_queue_with_budget(time_budget_seconds=5.0, batch_size=5)
         assert res["completed_in_run"] == 1
         # Verify evict_package was called for the package requesting fresh network data

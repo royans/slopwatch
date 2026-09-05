@@ -2,8 +2,8 @@
 
 import pytest
 
-from sentinel.core.dto import EvidenceSignal
-from sentinel.core.signals import (
+from slopguard.core.dto import EvidenceSignal
+from slopguard.core.signals import (
     SIGNAL_CATALOG,
     CODE_EXECUTION_CODES,
     CONFIRMED_DANGEROUS_CODES,
@@ -33,7 +33,7 @@ def test_catalog_codes_are_unique_and_well_formed():
 def test_scorer_prefix_tuples_stay_in_sync_with_catalog():
     """The scorer's hand-maintained prefix tuples must be a subset of the catalog's
     derived classification — this is the guard that stops the two drifting apart."""
-    from sentinel.assessor.scorer import (
+    from slopguard.assessor.scorer import (
         CODE_EXECUTION_FLAG_PREFIXES,
         CONFIRMED_DANGEROUS_FLAG_PREFIXES,
     )

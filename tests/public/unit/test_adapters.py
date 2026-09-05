@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import aiohttp
 from pathlib import Path
 
-from sentinel.adapters.pypi import PyPIAdapter
-from sentinel.adapters.npm import NpmAdapter
-from sentinel.core.dto import Ecosystem
-from sentinel.core.cache import DiskCacheManager
+from slopguard.adapters.pypi import PyPIAdapter
+from slopguard.adapters.npm import NpmAdapter
+from slopguard.core.dto import Ecosystem
+from slopguard.core.cache import DiskCacheManager
 
 
 def test_pypi_normalization():

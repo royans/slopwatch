@@ -1,6 +1,6 @@
 import pytest
-from sentinel.core.budget import TokenBucketLimiter
-from sentinel.core.exceptions import BudgetExceededError
+from slopguard.core.budget import TokenBucketLimiter
+from slopguard.core.exceptions import BudgetExceededError
 
 
 @pytest.mark.asyncio

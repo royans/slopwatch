@@ -3,15 +3,15 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock
 from sqlalchemy import text
 
-from sentinel.core.dto import Ecosystem, PackageMetadata, ThreatVerdict, PackageCreationEvent, SquatDetection
-from sentinel.db.engine import DatabaseManager
-from sentinel.db.repository import SentinelRepository
-from sentinel.scheduler.queue import (
+from slopguard.core.dto import Ecosystem, PackageMetadata, ThreatVerdict, PackageCreationEvent, SquatDetection
+from slopguard.db.engine import DatabaseManager
+from slopguard.db.repository import SentinelRepository
+from slopguard.scheduler.queue import (
     CrawlTask,
     TaskPriorityTier,
     compute_brand_priority,
 )
-from sentinel.scheduler.worker import ContinuousCrawlerWorker
+from slopguard.scheduler.worker import ContinuousCrawlerWorker
 
 
 def test_compute_brand_priority():

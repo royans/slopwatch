@@ -1,9 +1,9 @@
 import pytest
 from pathlib import Path
-from sentinel.core.dto import Ecosystem, WatchlistCandidate, WatchlistState
-from sentinel.db.engine import DatabaseManager
-from sentinel.db.repository import SentinelRepository
-from sentinel.linter.lockfile import DependencyLinter
+from slopguard.core.dto import Ecosystem, WatchlistCandidate, WatchlistState
+from slopguard.db.engine import DatabaseManager
+from slopguard.db.repository import SentinelRepository
+from slopguard.linter.lockfile import DependencyLinter
 
 
 @pytest.mark.asyncio
@@ -228,7 +228,7 @@ fail_on: "HIGH"
         "git+https://github.com/approved/fork.git\n"
     )
 
-    from sentinel.linter.lockfile import load_project_config
+    from slopguard.linter.lockfile import load_project_config
     cfg = load_project_config(tmp_path)
     assert "my-internal-company-sdk" in cfg["allowlist"]
 

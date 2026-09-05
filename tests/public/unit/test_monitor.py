@@ -2,16 +2,16 @@ import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
-from sentinel.core.dto import (
+from slopguard.core.dto import (
     Ecosystem,
     PackageCreationEvent,
     PackageMetadata,
     ASTSecurityReport,
     ThreatVerdict,
 )
-from sentinel.db.engine import DatabaseManager
-from sentinel.db.repository import SentinelRepository
-from sentinel.sentinel.monitor import InboundTripwireMonitor
+from slopguard.db.engine import DatabaseManager
+from slopguard.db.repository import SentinelRepository
+from slopguard.monitor import InboundTripwireMonitor
 
 
 @pytest.mark.asyncio
@@ -64,7 +64,7 @@ async def test_inbound_monitor_scans_and_flags_unlisted_dangerous_package():
         mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_report)
         mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
 
-        with patch("sentinel.sentinel.monitor.get_adapter", return_value=mock_adapter):
+        with patch("slopguard.monitor.get_adapter", return_value=mock_adapter):
             detections = await monitor.check_inbound_stream(Ecosystem.NPM, limit=10)
 
             # Successfully flagged despite not being on the watchlist
@@ -124,7 +124,7 @@ async def test_inbound_monitor_ignores_clean_unlisted_package():
         mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_report)
         mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
 
-        with patch("sentinel.sentinel.monitor.get_adapter", return_value=mock_adapter):
+        with patch("slopguard.monitor.get_adapter", return_value=mock_adapter):
             detections = await monitor.check_inbound_stream(Ecosystem.PYPI, limit=10)
             assert len(detections) == 0
 
@@ -190,7 +190,7 @@ async def test_inbound_monitor_prioritizes_tracked_keywords_over_untracked():
         mock_adapter.download_and_inspect_payload = AsyncMock(side_effect=_mock_download)
         mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
 
-        with patch("sentinel.sentinel.monitor.get_adapter", return_value=mock_adapter):
+        with patch("slopguard.monitor.get_adapter", return_value=mock_adapter):
             await monitor.check_inbound_stream(Ecosystem.PYPI, limit=10)
 
             # Tracked keyword package ('openai-fake-agent') MUST be inspected first!

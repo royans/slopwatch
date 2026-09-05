@@ -1,5 +1,5 @@
 """
-Unit tests for SlopGuard's compiled YARA scanning engine (sentinel.assessor.yara_engine).
+Unit tests for SlopGuard's compiled YARA scanning engine (slopguard.assessor.yara_engine).
 Validates rule compilation, pattern matching accuracy, line calculation,
 composite heuristics (loaders/stealers), routable IP address filtering,
 and exhaustive validation of every single rule against real package code fixtures.
@@ -14,7 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import pytest
-from sentinel.assessor.yara_engine import (
+from slopguard.assessor.yara_engine import (
     YaraPatternScanner,
     get_yara_scanner,
     is_public_exfil_ip,
@@ -219,7 +219,7 @@ def test_yara_evasive_payload_composite_heuristic():
 def test_python_tarball_yara_integration():
     import tarfile
     import io
-    from sentinel.assessor.python_ast import analyze_python_package_tarball
+    from slopguard.assessor.python_ast import analyze_python_package_tarball
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:

@@ -1,10 +1,10 @@
 import pytest
 import json
 from pathlib import Path
-from sentinel.core.dto import Ecosystem, ThreatVerdict, SquatDetection
-from sentinel.db.engine import DatabaseManager
-from sentinel.db.repository import SentinelRepository
-from sentinel.exporter.dossier import DossierExporter
+from slopguard.core.dto import Ecosystem, ThreatVerdict, SquatDetection
+from slopguard.db.engine import DatabaseManager
+from slopguard.db.repository import SentinelRepository
+from slopguard.exporter.dossier import DossierExporter
 
 
 @pytest.mark.asyncio

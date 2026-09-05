@@ -1,11 +1,11 @@
 import io
 import tarfile
 import pytest
-from sentinel.core.dto import ThreatVerdict
-from sentinel.assessor.python_ast import inspect_python_code_ast, analyze_python_package_tarball
-from sentinel.assessor.npm_manifest import analyze_npm_package_manifest
-from sentinel.assessor.npm_source import analyze_npm_package_tarball, merge_ast_reports
-from sentinel.core.dto import ASTSecurityReport
+from slopguard.core.dto import ThreatVerdict
+from slopguard.assessor.python_ast import inspect_python_code_ast, analyze_python_package_tarball
+from slopguard.assessor.npm_manifest import analyze_npm_package_manifest
+from slopguard.assessor.npm_source import analyze_npm_package_tarball, merge_ast_reports
+from slopguard.core.dto import ASTSecurityReport
 
 
 def _make_tarball(files: dict) -> bytes:
@@ -639,7 +639,7 @@ def test_npm_source_stealer_requires_sensitive_token_or_creds():
 
 def test_python_ast_uv_build_backend_is_safe():
     """Astral uv_build declared in pyproject.toml must be recognized as known safe."""
-    from sentinel.assessor.python_ast import analyze_python_package_tarball
+    from slopguard.assessor.python_ast import analyze_python_package_tarball
 
     pyproject_text = """
     [build-system]
@@ -658,7 +658,7 @@ def test_python_wheel_cpython_extension_not_flagged_as_unexpected_binary():
     """Standard CPython extension modules in wheels must not be flagged as unexpected native binaries."""
     import zipfile
     import io
-    from sentinel.assessor.python_ast import analyze_python_package_tarball
+    from slopguard.assessor.python_ast import analyze_python_package_tarball
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
@@ -672,8 +672,8 @@ def test_python_wheel_cpython_extension_not_flagged_as_unexpected_binary():
 
 def test_assessor_detects_expanded_imds_mcp_and_runtime_droppers():
     """Verify detection of GCP/AWS IMDS endpoints, MCP/AI agent config hijacking, and secondary runtime droppers."""
-    from sentinel.assessor.python_ast import analyze_python_package_tarball
-    from sentinel.assessor.npm_source import analyze_npm_package_tarball
+    from slopguard.assessor.python_ast import analyze_python_package_tarball
+    from slopguard.assessor.npm_source import analyze_npm_package_tarball
 
     py_payload = '''
 def install_hook():
@@ -709,7 +709,7 @@ const imds = 'http://169.254.169.254/metadata/identity/oauth2/token';
 
 def test_assessor_skips_decompression_bomb_files(monkeypatch):
     """Verify that files exceeding MAX_BYTES_PER_FILE are skipped without reading/parsing."""
-    import sentinel.assessor.python_ast as py_ast_mod
+    import slopguard.assessor.python_ast as py_ast_mod
     monkeypatch.setattr(py_ast_mod, "MAX_BYTES_PER_FILE", 500)
 
     buf = io.BytesIO()
@@ -858,7 +858,7 @@ def test_python_tarball_nested_setup_py_in_vendored_dir_ignored():
     """Nested setup.py (e.g. in pybind11/ or vendor/) must NOT be treated as top-level install script."""
     import tarfile
     import io
-    from sentinel.assessor.python_ast import analyze_python_package_tarball
+    from slopguard.assessor.python_ast import analyze_python_package_tarball
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:

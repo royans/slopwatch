@@ -1,6 +1,6 @@
 import pytest
-from sentinel.core.dto import Ecosystem
-from sentinel.matrix.generator import generate_ecosystem_candidates, filter_unregistered_candidates
+from slopguard.core.dto import Ecosystem
+from slopguard.matrix.generator import generate_ecosystem_candidates, filter_unregistered_candidates
 
 
 def test_generate_pypi_candidates():

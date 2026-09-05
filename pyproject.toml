@@ -68,7 +68,6 @@ Issues = "https://github.com/royans/slopguard/issues"
 
 [project.scripts]
 slopguard = "slopguard.cli:main"
-sentinel = "sentinel.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

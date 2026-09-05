@@ -1,5 +1,5 @@
 import pytest
-from sentinel.core.normalizers import (
+from slopguard.core.normalizers import (
     normalize_email_address,
     normalize_email_domain,
     extract_clean_email_and_domain,
