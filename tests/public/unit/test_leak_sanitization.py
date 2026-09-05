@@ -78,8 +78,8 @@ class LeakDetector:
             dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.endswith(".egg-info")]
 
             for file in files:
-                # Exclude the test file itself from the keyword scanner
-                if file == "test_leak_sanitization.py":
+                # Exclude test and presubmit files from the keyword scanner
+                if file in ("test_leak_sanitization.py", "presubmit.py"):
                     continue
 
                 full_path = Path(root) / file
