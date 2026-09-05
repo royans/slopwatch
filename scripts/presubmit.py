@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sentinel Standalone Pre-Submit Gatekeeper & Leak Protection.
+SlopGuard Standalone Pre-Submit Gatekeeper & Leak Protection.
 
 Guarantees that no internal documents, API keys, credentials, local paths,
 AI agent prompts, or un-sanitized internal imports exist in this repository.
@@ -314,7 +314,7 @@ class PresubmitGatekeeper:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sentinel Standalone Pre-Submit Gatekeeper")
+    parser = argparse.ArgumentParser(description="SlopGuard Standalone Pre-Submit Gatekeeper")
     parser.add_argument("--staged", action="store_true", help="Scan only git staged files")
     parser.add_argument("--target-dir", default=None, help="Target directory to inspect (default: repository root)")
     args = parser.parse_args()

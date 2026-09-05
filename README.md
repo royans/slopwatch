@@ -7,9 +7,9 @@
 
 **SlopGuard** (formerly codenamed Sentinel) is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
 
-Designed for developers, DevSecOps pipelines, and security research teams, Sentinel operates within the **Adversary Exploitation Window (AEW)**—identifying weaponized packages, deceptive brand squats, and phantom dependencies before they are installed.
+Designed for developers, DevSecOps pipelines, and security research teams, SlopGuard operates within the **Adversary Exploitation Window (AEW)**—identifying weaponized packages, deceptive brand squats, and phantom dependencies before they are installed.
 
-> **Background & Live Demo**: Sentinel was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
+> **Background & Live Demo**: SlopGuard was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
 
 ---
 
@@ -87,7 +87,7 @@ slopguard info
 
 ## 🐍 Python API Usage
 
-Sentinel can also be integrated directly into your own security tools and CI/CD pipelines:
+SlopGuard can also be integrated directly into your own security tools and CI/CD pipelines:
 
 ```python
 from sentinel.assessor.yara_engine import YaraPatternScanner
@@ -156,7 +156,7 @@ print(f"Risk score: {result.score}")
 
 ## 🔒 Security & Safe Execution Guarantee
 
-Sentinel is strictly a **zero-dynamic-execution** static engine:
+SlopGuard is strictly a **zero-dynamic-execution** static engine:
 * It **never** executes package installation scripts (`setup.py`, `install`, `postinstall`).
 * It **never** imports arbitrary untrusted third-party code into the runtime interpreter.
 * Tarball unpacking is guarded by path traversal protections (`strip_components`, safe paths) and bounded archive limits.

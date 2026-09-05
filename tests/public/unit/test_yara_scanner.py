@@ -1,5 +1,5 @@
 """
-Unit tests for Sentinel's compiled YARA scanning engine (sentinel.assessor.yara_engine).
+Unit tests for SlopGuard's compiled YARA scanning engine (sentinel.assessor.yara_engine).
 Validates rule compilation, pattern matching accuracy, line calculation,
 composite heuristics (loaders/stealers), routable IP address filtering,
 and exhaustive validation of every single rule against real package code fixtures.

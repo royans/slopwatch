@@ -263,7 +263,10 @@ def test_presubmit_gatekeeper_passes_on_clean_sentinel_repo():
     """Verify that PresubmitGatekeeper succeeds on the actual standalone sentinel repo."""
     from scripts.presubmit import PresubmitGatekeeper
 
-    sentinel_repo = Path(__file__).resolve().parent.parent.parent.parent.parent / "sentinel"
+    base_parent = Path(__file__).resolve().parent.parent.parent.parent.parent
+    sentinel_repo = base_parent / "slopguard"
+    if not sentinel_repo.exists():
+        sentinel_repo = base_parent / "sentinel"
     if sentinel_repo.exists():
         gk = PresubmitGatekeeper(root_dir=sentinel_repo)
         assert gk.run() is True
