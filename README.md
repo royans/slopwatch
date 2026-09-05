@@ -5,11 +5,20 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Engine](https://img.shields.io/badge/Core-Zero--LLM%20Deterministic-green.svg)](#architecture)
 
-**SlopGuard** is a high-throughput, deterministic supply chain malware, typosquatting, and AI hallucination detection engine for Python (PyPI) and JavaScript (npm) ecosystems.
+**SlopGuard** is a fast, deterministic supply chain security scanner for Python (PyPI) and JavaScript (npm) packages and lockfiles.
 
-Designed for developers, DevSecOps pipelines, and security research teams, SlopGuard operates within the **Adversary Exploitation Window (AEW)**—identifying weaponized packages, deceptive brand squats, and phantom dependencies before they are installed.
+> **Zero-LLM · 200ms Scans · Zero API Keys · Runs Offline**
 
-> **Background & Live Demo**: SlopGuard was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
+Designed for developers, CI/CD pipelines, and autonomous coding agents, SlopGuard protects against **AI package hallucinations** (when an LLM invents a plausible package name that an attacker registers) and **install-time execution traps** (`setup.py` hooks, `.pth` startup implants, npm lifecycle scripts) *before* dependencies touch your machine.
+
+> **Live Audits**: SlopGuard was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
+
+```bash
+# ⚡ Try it in 10 seconds (no config, no API keys)
+pip install slopguard
+slopguard check requirements.txt   # catch hallucinated or unregistered packages
+slopguard audit .                  # inspect local manifests and source files
+```
 
 ---
 
@@ -174,17 +183,20 @@ print(f"Verdict: {result.verdict}")
 
 ---
 
-## 🔒 Safe Analysis & Static Execution Model
+## 🔒 What SlopGuard Is & What It Isn’t
 
-SlopGuard is strictly a **zero-dynamic-execution** static engine:
-* It **never** executes package installation scripts (`setup.py`, `install`, `postinstall`).
-* It **never** imports arbitrary untrusted third-party code into the runtime interpreter.
-* Tarball unpacking is guarded by path traversal protections (`strip_components`, safe paths) and bounded archive limits.
+We believe security tools should be radically honest about their boundaries rather than overcommitting on claims.
 
-### 🎯 Heuristic Bounds & Transparency
-* **Static Heuristics vs. Sandboxing**: SlopGuard evaluates syntax trees (Python AST), lifecycle scripts, manifest declarations, and proximity-scoped YARA rules. It is designed for fast, non-destructive, zero-LLM scanning of registries and lockfiles. It does not replace full dynamic hypervisor or kernel-level sandboxing (such as decompiling obfuscated native `.so`/`.node` binaries).
-* **Respectful Verdicts**: Community libraries with standard system calls or telemetry are classified conservatively (`BENIGN_COMMUNITY` or `UNVERIFIED_COMMUNITY`). The `MALICIOUS` verdict is strictly reserved for confirmed weaponization vectors (install-time execution, reverse shells, credential exfiltration, OAST callouts).
-* **Direct VCS & Raw URLs**: Manifest checks detect direct VCS dependencies (`git+https://...`, raw tarballs) which bypass package registry integrity checks.
+### ✅ What SlopGuard IS:
+* **A fast, deterministic first line of defense**: Runs in milliseconds via Python AST, compiled YARA signatures, and Levenshtein distance trees.
+* **A detector for lazy automated weaponization**: Catches install-time socket connects, reverse shells, child process spawns in `setup.py`, malicious `.pth` startup files, Discord webhook exfiltration, and npm `preinstall` stealer payloads.
+* **An auditor for AI package hallucinations**: Checks whether packages suggested by Copilot, Cursor, or ChatGPT actually exist on PyPI/npm or are parked slopsquats waiting for a developer to run `pip install`.
+* **Respectful of maintainers**: Community libraries with ordinary telemetry or standard system calls are evaluated as `BENIGN_COMMUNITY` or `UNVERIFIED_COMMUNITY`. The `MALICIOUS` verdict is strictly reserved for confirmed, active weaponization vectors.
+
+### ❌ What SlopGuard IS NOT:
+* **Not an omniscient hypervisor sandbox**: It performs zero dynamic code execution. It will not execute code in a VM or kernel sandbox to observe runtime behavior.
+* **Not a binary decompiler**: If an attacker embeds compiled machine code inside a native `.so`, `.dylib`, or `.node` file, SlopGuard flags the presence of unexpected native binaries (`BUNDLED_NATIVE_BINARY`), but it does not reverse-engineer the compiled C/Rust assembly.
+* **Not a silver bullet**: Static analysis is inherently an adversarial cat-and-mouse game. High-entropy custom runtime encoders or multi-stage split downloaders can be designed to evade static regex. SlopGuard catches the bulk of automated supply chain attacks instantly without the latency, cost, or prompt-injection vulnerabilities of LLMs.
 
 ---
 
