@@ -600,12 +600,38 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
     )
 
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    would_be_malicious = (
+    # Install-time execution / module-toplevel-execution: trusted
+    # UNCONDITIONALLY, NOT run through the confidence gate below.
+    #
+    # Correction (2026-09-06): an earlier version of this function ran this
+    # through the same confidence gate as the worm-propagation case. Real
+    # corpus testing caught a severe regression: it demoted 4 of 10 golden
+    # confirmed-malicious samples (0wneg, a1rn, activedevbadge, adanbu) to
+    # UNVERIFIED_HIGH_SIGNAL, because the two rules that fire on "a custom
+    # setup.py install/cmdclass override exists" (Exec_Python_Setup_Hook,
+    # SupplyChain_PyPI_Custom_Install_Command — both MEDIUM) fire IDENTICALLY
+    # on genuinely malicious samples and on real legitimate ones (`daff`,
+    # `orange-widget-base`). Worse, the combined-probability math actually
+    # ranked orange-widget-base's evidence (P=0.48) HIGHER than a1rn's real
+    # os.system-to-hardcoded-IP exfiltration (P=0.19) — a1rn's dangerous call
+    # is hidden inside a helper function the AST visitor doesn't trace into,
+    # so only the weak existence-only rules fired for it. The current signal
+    # set cannot safely discriminate these two cases; a security tool should
+    # favor recall (don't miss real malware) over precision here rather than
+    # apply confidence math that happens to point the wrong way. Fixing this
+    # properly needs a real AST enhancement (trace calls reachable from a
+    # custom install class's run(), not just calls written directly inside
+    # it) — tracked, not attempted here. daff/orange-widget-base remain a
+    # known, narrower false positive as a result (see
+    # flagthis_sentinel/docs/internal/malware_learning_and_fp_reduction_strategy.md).
+    install_hook_confirmed = (
         (is_install_script and (score >= 70 or any(f.startswith(("INSTALL_TIME_", "OBFUSCATED_DYNAMIC_ACCESS")) for f in flags)))
-        or has_confirmed_weaponized_source
         or any(f.startswith("MODULE_TOPLEVEL_EXECUTION") for f in flags)
     )
-    if would_be_malicious or score >= 35:
+    would_be_malicious = install_hook_confirmed or has_confirmed_weaponized_source
+    if install_hook_confirmed:
+        verdict = ThreatVerdict.MALICIOUS
+    elif would_be_malicious or score >= 35:
         # The point-based logic above says this should be MALICIOUS or
         # SUSPICIOUS — but is the evidence behind that actually strong, or a
         # stack/single instance of individually-weak signals? See
@@ -860,26 +886,42 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
     is_empty_stub = (total_loc <= 25 and not has_functions_or_classes) or (total_source_files <= 1 and total_loc <= 10)
     size_tier = "EMPTY_STUB" if is_empty_stub else "TINY_CODEBASE" if total_loc < 150 else "MODERATE_CODEBASE" if total_loc < 1000 else "LARGE_CODEBASE"
 
-    has_confirmed_malicious = (
+    # Install-time execution: trusted UNCONDITIONALLY, kept OUT of the
+    # confidence gate below. See the matching comment in
+    # inspect_python_code_ast() above for the full rationale — real corpus
+    # testing (2026-09-06) showed gating this specific prefix group demotes
+    # real confirmed malware (0wneg, a1rn, activedevbadge, adanbu) because
+    # the rules that fire on "a custom install hook exists" can't be told
+    # apart from real legitimate packages (`daff`, `orange-widget-base`)
+    # using confidence math alone.
+    install_hook_confirmed = (
         has_pth_execution
         or any(f.startswith((
             "INSTALL_TIME_EXECUTION",
             "INSTALL_TIME_CMDCLASS_OVERRIDE",
             "INSTALL_TIME_NETWORK_SOCKET",
             "MODULE_TOPLEVEL_EXECUTION",
+        )) for f in all_flags)
+    )
+    weaponized_source_confirmed = any(
+        f.startswith((
             "SOURCE_CODE_CONFIRMED_STEALER",
             "SOURCE_CODE_DYNAMIC_CODE_LOADER",
             "SOURCE_CODE_PERSISTENT_BACKDOOR",
             "SOURCE_CODE_EVASIVE_PAYLOAD",
             "CROSS_ECOSYSTEM_WORM_PROPAGATION",
             "PYTHON_PTH_CODE_EXECUTION",
-        )) or "REVERSE_SHELL" in f for f in all_flags)
+        )) or "REVERSE_SHELL" in f
+        for f in all_flags
     )
+    has_confirmed_malicious = install_hook_confirmed or weaponized_source_confirmed
 
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if has_confirmed_malicious or max_score >= 35:
+    if install_hook_confirmed:
+        verdict = ThreatVerdict.MALICIOUS
+    elif has_confirmed_malicious or max_score >= 35:
         # See the identical gate in inspect_python_code_ast() above for the
-        # full rationale. Applied uniformly here too — has_confirmed_malicious
+        # full rationale. Applied uniformly here too — weaponized_source_confirmed
         # includes prefixes not yet individually confidence-audited (e.g.
         # CROSS_ECOSYSTEM_WORM_PROPAGATION), so it is NOT exempt: a real
         # HIGH-confidence flag still passes this trivially, but a

