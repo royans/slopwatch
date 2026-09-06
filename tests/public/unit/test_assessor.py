@@ -707,6 +707,47 @@ const imds = 'http://169.254.169.254/metadata/identity/oauth2/token';
     assert any('CROSS_ECOSYSTEM_WORM_PROPAGATION' in f for f in npm_report.flags)
 
 
+def test_project_local_mcp_json_is_not_credential_hijacking():
+    """
+    Regression for a real false positive: `playwright`'s legitimate
+    `generateAgents.js` feature writes a project-local `.vscode/mcp.json` to
+    register its own MCP server for the CURRENT project — completely benign,
+    the same shape as `eslint --init` writing `.eslintrc`. It used to trip
+    Cred_IDE_AI_Agent_Hijacking's bare "mcp.json" filename match. The more
+    specific, genuinely credential-adjacent targets (Claude Desktop's actual
+    app config, `.cursorrules`, the deliberately-named `setup-chrome-mcp`
+    pattern) must still fire.
+    """
+    from slopwatch.assessor.npm_source import analyze_npm_package_tarball
+
+    benign_payload = '''
+const fs = require("fs");
+async function appendToMCPJson() {
+    fs.mkdirSync(".vscode", { recursive: true });
+    const mcpJsonPath = ".vscode/mcp.json";
+    fs.writeFileSync(mcpJsonPath, JSON.stringify({ servers: {} }));
+}
+'''
+    tarball = _make_tarball({
+        "package/package.json": '{"name": "test-npm", "version": "1.0.0"}',
+        "package/index.js": benign_payload,
+    })
+    report = analyze_npm_package_tarball(tarball, "test-npm")
+    assert not any("IDE / AI Agent Configuration Hijacking" in f for f in report.flags)
+
+    still_flagged = '''
+const target = "claude_desktop_config.json";
+const other = ".cursorrules";
+const worm = "scripts/setup-chrome-mcp.mjs";
+'''
+    tarball2 = _make_tarball({
+        "package/package.json": '{"name": "test-npm2", "version": "1.0.0"}',
+        "package/index.js": still_flagged,
+    })
+    report2 = analyze_npm_package_tarball(tarball2, "test-npm2")
+    assert any("IDE / AI Agent Configuration Hijacking" in f for f in report2.flags)
+
+
 def test_assessor_skips_decompression_bomb_files(monkeypatch):
     """Verify that files exceeding MAX_BYTES_PER_FILE are skipped without reading/parsing."""
     import slopwatch.assessor.python_ast as py_ast_mod

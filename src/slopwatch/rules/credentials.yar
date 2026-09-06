@@ -172,7 +172,19 @@ rule Cred_IDE_AI_Agent_Hijacking {
         category = "cred"
     strings:
         $s1 = /(~|\$HOME|%USERPROFILE%|%APPDATA%|Library\/Application Support)\/[^\s"'\)]*(\.(vscode|claude|gemini|cursor)|Claude|Cursor)\/(settings|tasks|rules|mcp|claude_desktop_config|\.cursorrules)/ ascii nocase
-        $s2 = /(["'\/]|^)(\.cursorrules|claude_desktop_config\.json|mcp\.json|setup-chrome-mcp|chrome-mcp)(\b|["'\/]|\.[a-zA-Z0-9]+)/ ascii nocase
+        // NOTE: bare `mcp.json` used to be in $s2 too, matched on nothing more
+        // than the literal filename anywhere in the source. Real MCP-integration
+        // tooling legitimately creates or references a project-local
+        // ".vscode/mcp.json" as part of its own first-party functionality — not
+        // in the user's home/profile directory, so $s1 correctly doesn't match
+        // it — and "mcp.json" alone is too generic a filename to mean
+        // "hijacking" on its own. Confirmed false positive on real-world
+        // `playwright` (its legitimate `generateAgents.js` MCP-scaffolding
+        // feature writes exactly this). `claude_desktop_config.json` and
+        // `.cursorrules` stay: unlike a project-local server registry, Claude
+        // Desktop's actual app config is meaningfully more specific and
+        // historically credential-adjacent.
+        $s2 = /(["'\/]|^)(\.cursorrules|claude_desktop_config\.json|setup-chrome-mcp|chrome-mcp)(\b|["'\/]|\.[a-zA-Z0-9]+)/ ascii nocase
     condition:
         $s1 or $s2
 }
