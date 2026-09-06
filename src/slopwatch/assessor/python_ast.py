@@ -544,8 +544,22 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
     )
 
     score = min(100, threat_score)
+    has_confirmed_weaponized_source = any(
+        f.startswith((
+            "CROSS_ECOSYSTEM_WORM_PROPAGATION",
+            "SOURCE_CODE_CONFIRMED_STEALER",
+            "SOURCE_CODE_DYNAMIC_CODE_LOADER",
+            "SOURCE_CODE_PERSISTENT_BACKDOOR",
+            "SOURCE_CODE_EVASIVE_PAYLOAD",
+            "PYTHON_PTH_CODE_EXECUTION",
+        )) or "REVERSE_SHELL" in f
+        for f in flags
+    )
+
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if score >= 70:
+    if is_install_script and (score >= 70 or any(f.startswith(("INSTALL_TIME_", "OBFUSCATED_DYNAMIC_ACCESS")) for f in flags)):
+        verdict = ThreatVerdict.MALICIOUS
+    elif has_confirmed_weaponized_source:
         verdict = ThreatVerdict.MALICIOUS
     elif score >= 35:
         verdict = ThreatVerdict.SUSPICIOUS
@@ -789,8 +803,23 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
     is_empty_stub = (total_loc <= 25 and not has_functions_or_classes) or (total_source_files <= 1 and total_loc <= 10)
     size_tier = "EMPTY_STUB" if is_empty_stub else "TINY_CODEBASE" if total_loc < 150 else "MODERATE_CODEBASE" if total_loc < 1000 else "LARGE_CODEBASE"
 
+    has_confirmed_malicious = (
+        has_pth_execution
+        or any(f.startswith((
+            "INSTALL_TIME_EXECUTION",
+            "INSTALL_TIME_CMDCLASS_OVERRIDE",
+            "INSTALL_TIME_NETWORK_SOCKET",
+            "SOURCE_CODE_CONFIRMED_STEALER",
+            "SOURCE_CODE_DYNAMIC_CODE_LOADER",
+            "SOURCE_CODE_PERSISTENT_BACKDOOR",
+            "SOURCE_CODE_EVASIVE_PAYLOAD",
+            "CROSS_ECOSYSTEM_WORM_PROPAGATION",
+            "PYTHON_PTH_CODE_EXECUTION",
+        )) or "REVERSE_SHELL" in f for f in all_flags)
+    )
+
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if max_score >= 70 or has_pth_execution:
+    if has_confirmed_malicious:
         verdict = ThreatVerdict.MALICIOUS
     elif max_score >= 35:
         verdict = ThreatVerdict.SUSPICIOUS

@@ -209,22 +209,63 @@ def has_install_time_code_execution(flags: List[str]) -> bool:
     return any(f.startswith(CODE_EXECUTION_FLAG_PREFIXES) for f in flags)
 
 
+def _extract_flag_filename(flag: str) -> Optional[str]:
+    import re
+    m = re.search(r"\b(?:in|from)\s+([^\s:]+\.[a-zA-Z0-9_-]+)(?::\d+|\b)", flag)
+    if m:
+        return m.group(1).replace(chr(92), "/").lower().split("/")[-1]
+    return None
+
+
 def has_confirmed_dangerous_execution(flags: List[str]) -> bool:
     """
     Narrower than has_install_time_code_execution(): true only when a specific
     dangerous pattern was actually observed. This is what gates the MALICIOUS
     verdict.
+
+    Call-time library code (inside functions or SDK methods) must NEVER trigger
+    MALICIOUS solely on uncorroborated string matches across different files.
+    MALICIOUS is strictly reserved for:
+    1. Confirmed dangerous flag prefixes (install-time hooks, reverse shells,
+       worms, verified-proximity loaders/stealers).
+    2. Install-time hooks combined with exfiltration destinations or credential harvesting.
+    3. Exfiltration destination co-located in the same source file with credential or
+       environment harvesting.
     """
     if any(f.startswith(CONFIRMED_DANGEROUS_FLAG_PREFIXES) for f in flags):
         return True
 
-    # Check for exfiltration destination + credential or environment harvesting
-    has_exfil = any(f.startswith("EXFILTRATION_DESTINATION_DETECTED") for f in flags)
-    has_cred = any(f.startswith("CREDENTIAL_PATH_HARVESTING") for f in flags)
-    has_env = any(f.startswith("SOURCE_CODE_ENV_VARS_ACCESS") for f in flags)
+    # Check for install-time execution hook
+    is_install_time = any(f.startswith((
+        "INSTALL_TIME_EXECUTION",
+        "INSTALL_TIME_CMDCLASS_OVERRIDE",
+        "INSTALL_TIME_NETWORK_SOCKET",
+        "LIFECYCLE_SCRIPT",
+        "PYTHON_PTH_CODE_EXECUTION",
+        "PYTHON_PTH_STARTUP_HOOK",
+        "GYP_WEAPONIZED_EXECUTION",
+    )) for f in flags)
 
-    if has_exfil and (has_cred or has_env):
+    exfil_flags = [f for f in flags if f.startswith("EXFILTRATION_DESTINATION_DETECTED")]
+    cred_flags = [f for f in flags if f.startswith("CREDENTIAL_PATH_HARVESTING")]
+    env_flags = [f for f in flags if f.startswith("SOURCE_CODE_ENV_VARS_ACCESS")]
+
+    # In install hooks (setup.py root, lifecycle scripts, .pth), credential harvesting
+    # or exfiltration destination confirms weaponization.
+    if is_install_time and (exfil_flags or cred_flags):
         return True
+
+    # Exfiltration destination combined with credential harvesting across the package
+    if exfil_flags and cred_flags:
+        return True
+
+    # If exfiltration destination and env harvesting occur in the SAME file, that
+    # confirms intra-file secret exfiltration.
+    if exfil_flags and env_flags:
+        exfil_files = {_extract_flag_filename(f) for f in exfil_flags} - {None}
+        env_files = {_extract_flag_filename(f) for f in env_flags} - {None}
+        if exfil_files & env_files:
+            return True
 
     return False
 

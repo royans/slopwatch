@@ -378,8 +378,20 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
         else "LARGE_CODEBASE"
     )
 
+    has_confirmed_weaponized_source = any(
+        f.startswith((
+            "CROSS_ECOSYSTEM_WORM_PROPAGATION",
+            "GYP_WEAPONIZED_EXECUTION",
+            "SOURCE_CODE_CONFIRMED_STEALER",
+            "SOURCE_CODE_DYNAMIC_CODE_LOADER",
+            "SOURCE_CODE_PERSISTENT_BACKDOOR",
+            "SOURCE_CODE_EVASIVE_PAYLOAD",
+        )) or "REVERSE_SHELL" in f
+        for f in all_flags
+    )
+
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if threat_score >= 70:
+    if has_confirmed_weaponized_source:
         verdict = ThreatVerdict.MALICIOUS
     elif threat_score >= 35:
         verdict = ThreatVerdict.SUSPICIOUS
