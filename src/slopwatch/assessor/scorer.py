@@ -59,6 +59,15 @@ HIGH_VALUE_BRANDS: Set[str] = {
     "google", "google-cloud", "gcp", "microsoft", "azure", "aws", "amazon",
     "okta", "auth0", "clerk", "supabase", "snowflake", "stripe", "cloudflare", "github",
     "keycloak", "duo",
+
+    # Security & Enterprise Vendors (common impersonation/typosquat targets —
+    # e.g. the real "SentinelOne" PyPI malware sample seen in the DataDog corpus)
+    "sentinelone", "crowdstrike", "paloaltonetworks", "fortinet", "checkpoint",
+    "cisco", "trendmicro", "sophos", "mcafee", "symantec", "rapid7", "tenable",
+    "qualys", "snyk", "datadog", "pagerduty", "twilio", "segment", "onepassword",
+    "lastpass", "bitwarden", "hashicorp", "vault", "cyberark", "wiz", "netskope",
+    "zscaler", "sailpoint", "splunk", "pingidentity", "onelogin", "jfrog",
+    "sonarqube", "sonarsource", "veracode", "checkmarx",
 }
 
 # Official Vendor GitHub Organizations
@@ -115,6 +124,21 @@ OFFICIAL_VENDOR_ORGS: Dict[str, List[str]] = {
     "duo": ["github.com/duosecurity"],
     "shopify": ["github.com/shopify"],
     "slack": ["github.com/slackapi"],
+    # Security & Enterprise Vendors
+    "crowdstrike": ["github.com/crowdstrike"],
+    "hashicorp": ["github.com/hashicorp"],
+    "vault": ["github.com/hashicorp"],
+    "snyk": ["github.com/snyk"],
+    "datadog": ["github.com/datadog"],
+    "twilio": ["github.com/twilio"],
+    "segment": ["github.com/segmentio"],
+    "bitwarden": ["github.com/bitwarden"],
+    "cyberark": ["github.com/cyberark"],
+    "wiz": ["github.com/wiz-sec"],
+    "splunk": ["github.com/splunk"],
+    "jfrog": ["github.com/jfrog"],
+    "veracode": ["github.com/veracode"],
+    "checkmarx": ["github.com/checkmarx"],
 }
 
 # High-Profile Official Upstream Repositories (Monitored for URL Confusion & SourceRank Hijacking)
@@ -1063,6 +1087,19 @@ class ProgressiveThreatEvaluator:
             latest_rel = meta.latest_release_at or meta.published_at
             now_utc = datetime.now(timezone.utc)
 
+            # Triage queue marker for the highest-value, still-unresolved cases:
+            # an unverified claim on a high-value brand that didn't clear the bar
+            # for VERIFIED_OFFICIAL. This is a cheap flag consumers (e.g. the
+            # crawler) can filter on to route packages toward deeper scrutiny —
+            # it is NOT itself a differential-AST/taint analysis. That deeper
+            # comparison-against-the-real-package pass is tracked separately
+            # (Phase 13: Delta-AST subtree mining) and is not implemented here.
+            needs_deep_review = bool(
+                is_known_brand
+                and not is_official_vendor
+                and verdict in (ThreatVerdict.SUSPICIOUS, ThreatVerdict.MALICIOUS, ThreatVerdict.SQUATTED_STUB)
+            )
+
             return SquatDetection(
                 candidate_id=candidate.candidate_id,
                 ecosystem=ecosystem,
@@ -1094,6 +1131,7 @@ class ProgressiveThreatEvaluator:
                     "discovered_at": now_utc.isoformat(),
                     "last_audited_at": now_utc.isoformat(),
                     "is_official_vendor": is_official_vendor,
+                    "needs_deep_review": needs_deep_review,
                     "major_version": major_ver,
                     "is_inflated_version_risk": is_inflated_version_risk,
                     "has_internal_keyword": has_internal_keyword,

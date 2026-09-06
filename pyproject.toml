@@ -85,3 +85,7 @@ include = ["slopwatch*"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
+markers = [
+    "corpus: network-dependent golden-malware regression test against the live DataDog/OSSF dataset; excluded from the default run, see addopts below.",
+]
+addopts = "-m 'not corpus'"
