@@ -223,9 +223,12 @@ print(f"Verdict: {result.verdict}")
 │  [3] Pre-Compiled YARA Engine                             │
 │      - 9 Suites: Exfiltration, Shells, Persistence, etc.  │
 │                                                           │
-│  [4] Scoring & Classification Matrix                      │
+│  [4] Confidence-Weighted Scoring & Classification Matrix  │
 │      - Normalized 0-1000 Threat Score                     │
-│      - Verdicts: MALICIOUS | SUSPICIOUS | BENIGN          │
+│      - Bayesian confidence gate (per-rule HIGH/MED/LOW)   │
+│      - Verdicts: MALICIOUS | SUSPICIOUS |                 │
+│        UNVERIFIED_HIGH_SIGNAL | SQUATTED_STUB |           │
+│        BENIGN_COMMUNITY | VERIFIED_OFFICIAL               │
 └─────────────────────────────┬─────────────────────────────┘
                               │
                               ▼
@@ -247,7 +250,8 @@ We believe security tools should be radically honest about their boundaries rath
 * **A fast, deterministic first line of defense**: Runs in milliseconds via Python AST, compiled YARA signatures, and Levenshtein distance trees.
 * **A detector for lazy automated weaponization**: Catches install-time socket connects, reverse shells, child process spawns in `setup.py`, malicious `.pth` startup files, Discord webhook exfiltration, and npm `preinstall` stealer payloads.
 * **An auditor for AI package hallucinations**: Checks whether packages suggested by Copilot, Cursor, or ChatGPT actually exist on PyPI/npm or are parked slopsquats waiting for a developer to run `pip install`.
-* **Respectful of maintainers**: Community libraries with ordinary telemetry or standard system calls are evaluated as `BENIGN_COMMUNITY` or `UNVERIFIED_COMMUNITY`. The `MALICIOUS` verdict is strictly reserved for confirmed, active weaponization vectors.
+* **Respectful of maintainers**: Community libraries with ordinary telemetry or standard system calls are evaluated as `BENIGN_COMMUNITY`. The `MALICIOUS` verdict is strictly reserved for confirmed, active weaponization vectors.
+* **Honest about uncertainty**: when the total score crosses a threat threshold but no individual signal behind it is, on its own, strong enough to justify confidently asserting malice, SlopWatch reports `UNVERIFIED_HIGH_SIGNAL` instead of `SUSPICIOUS`/`MALICIOUS` — a Bayesian confidence gate (per-rule HIGH/MEDIUM/LOW likelihood ratios) rather than treating every fired signal as equally damning. Real signal, not confirmed; worth a human look, not a false alarm.
 
 ### ❌ What SlopWatch IS NOT:
 * **Not an omniscient hypervisor sandbox**: It performs zero dynamic code execution. It will not execute code in a VM or kernel sandbox to observe runtime behavior.

@@ -134,6 +134,21 @@ SlopWatch classifies security findings into four distinct severity tiers:
 | **`MEDIUM`** | **35 – 49** | Unregistered / 404 packages on public registry (AI hallucination risk), suspicious dynamic loaders without verified network sinks, unexpected compiled native binaries. | **Advisory Warning (Exit 0)** |
 | **`LOW` / `INFO`** | **0 – 34** | Standard environment variable access (`os.environ`), benign community telemetry, empty documentation stubs. | **Passed (Exit 0)** |
 
+### A note on `UNVERIFIED_HIGH_SIGNAL`
+
+SlopWatch's verdict layer includes a sixth verdict, `UNVERIFIED_HIGH_SIGNAL`:
+the total score crossed a threat threshold, but no individual signal behind
+it was, on its own, strong enough to confidently assert malice (see the
+"Honest about uncertainty" point in the main README). Today, this table's
+`fail_on` policy is driven purely by **score**, not by verdict — so a package
+that lands on `UNVERIFIED_HIGH_SIGNAL` still fails CI at exactly the same
+score threshold a confirmed `MALICIOUS`/`SUSPICIOUS` result would. Whether
+that's the right default (vs. treating it as an advisory-only tier
+regardless of score) is an open question, not yet decided — if you want a
+softer default for now, add packages you've manually reviewed to
+`allowlist`, or use `--ignore <name>` on the CLI once available (tracked in
+`flagthis_sentinel`'s `docs/internal/malware_learning_and_fp_reduction_strategy.md`).
+
 ### Choosing Your `fail_on` Policy
 
 * **`fail_on: "CRITICAL"` (Permissive)**:
