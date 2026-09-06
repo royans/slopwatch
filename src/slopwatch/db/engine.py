@@ -50,8 +50,6 @@ class DatabaseManager:
     async def init_db(self) -> None:
         """Create database tables if they do not exist and apply schema migrations."""
         async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
             # SQLite schema migration for all added columns in v2.1.x
             def _migrate_columns(sync_conn):
                 cursor = sync_conn.cursor() if hasattr(sync_conn, "cursor") else sync_conn.connection.cursor()
@@ -114,8 +112,20 @@ class DatabaseManager:
                     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sentinel_findings';")
                     if cursor.fetchone():
                         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='slopwatch_findings';")
+                        if cursor.fetchone():
+                            cursor.execute("SELECT count(*) FROM slopwatch_findings;")
+                            if cursor.fetchone()[0] == 0:
+                                cursor.execute("DROP TABLE slopwatch_findings;")
+                        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='slopwatch_findings';")
                         if not cursor.fetchone():
                             cursor.execute("ALTER TABLE sentinel_findings RENAME TO slopwatch_findings;")
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='slopguard_findings';")
+                    if cursor.fetchone():
+                        try:
+                            cursor.execute("INSERT OR IGNORE INTO slopwatch_findings SELECT * FROM slopguard_findings;")
+                            cursor.execute("DROP TABLE slopguard_findings;")
+                        except Exception:
+                            pass
                     cursor.execute("CREATE VIEW IF NOT EXISTS sentinel_findings AS SELECT * FROM slopwatch_findings;")
 
                 except Exception:
@@ -124,6 +134,7 @@ class DatabaseManager:
                     cursor.close()
 
             await conn.run_sync(_migrate_columns)
+            await conn.run_sync(Base.metadata.create_all)
 
     async def close(self) -> None:
         """Close database engine connection pool."""
