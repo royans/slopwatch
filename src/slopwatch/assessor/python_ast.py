@@ -213,6 +213,7 @@ class SetupASTVisitor(ast.NodeVisitor):
         self.custom_install_classes: Dict[str, str] = {}  # class_name -> base_name
         self.cmdclass_registered_classes: Set[str] = set()
         self.top_level_calls: List[Tuple[str, int]] = []
+        self.module_toplevel_calls: List[Tuple[str, int]] = []  # dangerous calls at module scope OUTSIDE setup.py — see visit_Call
         self.cmdclass_override_calls: List[Tuple[str, str, int]] = []  # (class_name, call_name, lineno)
         self.dynamic_obfuscation_calls: List[Tuple[str, int]] = []  # (detail, lineno)
         self.function_calls: List[Tuple[str, int]] = []
@@ -315,6 +316,21 @@ class SetupASTVisitor(ast.NodeVisitor):
                     self.has_dynamic_obfuscation = True
         self.generic_visit(node)
 
+    @staticmethod
+    def _is_benign_exec(call_name: str, node: ast.Call) -> bool:
+        """True only for `exec(open(...).read())`-shaped calls — a discouraged
+        but real pattern (loading a generated/version file at import time).
+        Every other dangerous call name is never considered benign here."""
+        if call_name != "exec":
+            return False
+        if node.args and isinstance(node.args[0], ast.Call):
+            first_arg = node.args[0]
+            if isinstance(first_arg.func, ast.Name) and first_arg.func.id in ("open", "compile", "read"):
+                return True
+            if isinstance(first_arg.func, ast.Attribute) and first_arg.func.attr in ("read", "read_text"):
+                return True
+        return False
+
     def visit_Call(self, node: ast.Call):
         call_name = _get_dotted_name(node.func)
 
@@ -383,19 +399,25 @@ class SetupASTVisitor(ast.NodeVisitor):
                 self.has_cmdclass_override = True
             elif self.scope_depth == 0 and self.is_install_script:
                 # Top-level install-time execution hook
-                if call_name == "exec":
-                    is_benign_exec = False
-                    if node.args and isinstance(node.args[0], ast.Call):
-                        first_arg = node.args[0]
-                        if isinstance(first_arg.func, ast.Name) and first_arg.func.id in ("open", "compile", "read"):
-                            is_benign_exec = True
-                        elif isinstance(first_arg.func, ast.Attribute) and first_arg.func.attr in ("read", "read_text"):
-                            is_benign_exec = True
-                    if not is_benign_exec:
-                        self.top_level_calls.append((call_name, node.lineno))
-                        self.has_os_system = True
-                else:
+                if not self._is_benign_exec(call_name, node):
                     self.top_level_calls.append((call_name, node.lineno))
+                    self.has_os_system = True
+                    if "eval" in call_name:
+                        self.has_base64_eval = True
+            elif self.scope_depth == 0 and not self.is_install_script:
+                # Module-scope dangerous call in a file OTHER than setup.py (e.g.
+                # __init__.py). This is exactly as automatically-triggered as an
+                # install-time hook: `import package` runs a module's top-level
+                # code the same way `pip install` runs setup.py's top level.
+                # Tracked separately (MODULE_TOPLEVEL_EXECUTION, not
+                # INSTALL_TIME_EXECUTION) so severity/gating stays independently
+                # tunable. Real miss this fixes: a plain, unobfuscated
+                # `subprocess.run(["powershell", "-Command", <download-and-run>])`
+                # sitting at the top of a confirmed-malicious package's
+                # `__init__.py` (dataset sample "automsg") scored BENIGN_COMMUNITY
+                # before this, because only setup.py's top level was ever scored.
+                if not self._is_benign_exec(call_name, node):
+                    self.module_toplevel_calls.append((call_name, node.lineno))
                     if "os.system" in call_name or "os.popen" in call_name:
                         self.has_os_system = True
                     if "eval" in call_name:
@@ -457,6 +479,15 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
         threat_score += pts
         flags.append(f"INSTALL_TIME_EXECUTION: '{call}' executed at top-level in {filename}:{lineno}")
         line_details.append(f"{filename}:{lineno} -> {call}() [TOP_LEVEL]")
+
+    # 1b. Same severity, different file: a dangerous call at module scope
+    # outside setup.py runs just as automatically the moment anything
+    # `import`s this module. See visit_Call's MODULE_TOPLEVEL_EXECUTION comment.
+    for call, lineno in visitor.module_toplevel_calls:
+        pts = DANGEROUS_CALLS.get(call, 40)
+        threat_score += pts
+        flags.append(f"MODULE_TOPLEVEL_EXECUTION: '{call}' executed at module scope (runs on import) in {filename}:{lineno}")
+        line_details.append(f"{filename}:{lineno} -> {call}() [MODULE_TOPLEVEL]")
 
     # 2. Critical cmdclass install-time override
     for cls_name, call_name, lineno in visitor.cmdclass_override_calls:
@@ -571,6 +602,8 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
     if is_install_script and (score >= 70 or any(f.startswith(("INSTALL_TIME_", "OBFUSCATED_DYNAMIC_ACCESS")) for f in flags)):
         verdict = ThreatVerdict.MALICIOUS
     elif has_confirmed_weaponized_source:
+        verdict = ThreatVerdict.MALICIOUS
+    elif any(f.startswith("MODULE_TOPLEVEL_EXECUTION") for f in flags):
         verdict = ThreatVerdict.MALICIOUS
     elif score >= 35:
         verdict = ThreatVerdict.SUSPICIOUS
@@ -820,6 +853,7 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
             "INSTALL_TIME_EXECUTION",
             "INSTALL_TIME_CMDCLASS_OVERRIDE",
             "INSTALL_TIME_NETWORK_SOCKET",
+            "MODULE_TOPLEVEL_EXECUTION",
             "SOURCE_CODE_CONFIRMED_STEALER",
             "SOURCE_CODE_DYNAMIC_CODE_LOADER",
             "SOURCE_CODE_PERSISTENT_BACKDOOR",
