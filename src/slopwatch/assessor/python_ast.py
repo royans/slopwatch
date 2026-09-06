@@ -526,6 +526,17 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
                     threat_score += 20
                 else:
                     threat_score += 0
+            elif prefix == "SUSPICIOUS_OBFUSCATION":
+                # obfuscation.yar's rules (dense hex escapes, layered base64/decompress
+                # pipelines, JS obfuscator dict-lookup patterns, invisible-unicode
+                # steganography) were firing correctly but had no case here at all,
+                # so they silently contributed zero score no matter how obfuscated the
+                # payload was — confirmed against a real DataDog-listed malicious
+                # package ("bettercolor") that hit two of these rules and still scored
+                # BENIGN_COMMUNITY. Not added to the MALICIOUS-gating prefix lists
+                # (CONFIRMED_DANGEROUS_FLAG_PREFIXES / has_confirmed_malicious below) —
+                # obfuscation alone isn't proof of malice — but it must count.
+                threat_score += 35
             elif prefix in ("SOURCE_CODE_DYNAMIC_EXECUTION", "SOURCE_CODE_ENCODED_PAYLOAD"):
                 threat_score += 25
 

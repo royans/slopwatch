@@ -1027,3 +1027,41 @@ module.exports = { port };
     report = analyze_npm_package_tarball(tarball, "clean-webhook-sdk")
     assert report.verdict != ThreatVerdict.MALICIOUS
     assert report.verdict in (ThreatVerdict.BENIGN_COMMUNITY, ThreatVerdict.SUSPICIOUS)
+
+
+def test_python_suspicious_obfuscation_flag_contributes_score():
+    """
+    Regression for a real miss: obfuscation.yar's rules were firing correctly
+    (confirmed against the real DataDog-listed malicious package "bettercolor",
+    which hit two SUSPICIOUS_OBFUSCATION rules) but inspect_python_code_ast's
+    scoring loop had no case for that prefix at all, so the flags were recorded
+    for visibility and then silently contributed zero points — the package
+    scored BENIGN_COMMUNITY despite the hits. A dense run of hex escapes (the
+    same BlankOBF-style pattern used in real samples) must move the score.
+    """
+    hex_blob = "".join(f"\\x{b:02x}" for b in b"eval(compile(marshaled_blob))")
+    obfuscated_module = f'payload = "{hex_blob}"\n'
+    tarball = _make_tarball({
+        "pkg-1.0.0/setup.py": "from setuptools import setup\nsetup(name='pkg', version='1.0.0')\n",
+        "pkg-1.0.0/pkg/__init__.py": obfuscated_module,
+    })
+    report = analyze_python_package_tarball(tarball, "pkg")
+    assert any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in report.flags)
+    assert report.composite_threat_score >= 35
+    assert report.verdict != ThreatVerdict.BENIGN_COMMUNITY
+
+
+def test_npm_suspicious_obfuscation_flag_contributes_score():
+    """npm-side counterpart — same missing-case bug existed in npm_source.py."""
+    obfuscated_module = (
+        "var payload = '"
+        + "".join(f"\\x{b:02x}" for b in b"evalthisisadensehexblobforsure")
+        + "';\n"
+    )
+    tarball = _make_tarball({
+        "package/package.json": '{"name": "pkg", "version": "1.0.0", "main": "index.js"}',
+        "package/index.js": obfuscated_module,
+    })
+    report = analyze_npm_package_tarball(tarball, "pkg")
+    assert any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in report.flags)
+    assert report.composite_threat_score >= 35

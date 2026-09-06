@@ -360,6 +360,12 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
         threat_score += 35
     if any(f.startswith("BUNDLED_NATIVE_BINARY") for f in all_flags):
         threat_score += 25
+    if any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in all_flags):
+        # Same gap as python_ast.py: obfuscation.yar's rules (JS obfuscator
+        # dict-lookup pattern, invisible-unicode steganography, dense hex
+        # escapes, layered base64/decompress) fire correctly against real npm
+        # payloads but had no case here, so they silently scored zero.
+        threat_score += 35
     if any(f.startswith("SOURCE_CODE_DYNAMIC_EXECUTION") for f in all_flags):
         threat_score += 25
     if any(f.startswith("SOURCE_CODE_ENCODED_PAYLOAD") for f in all_flags):
