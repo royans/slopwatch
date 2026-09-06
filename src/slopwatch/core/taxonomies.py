@@ -330,3 +330,159 @@ DISPOSABLE_EMAIL_DOMAINS: List[str] = [
 ]
 
 
+
+# Curated Trusted Vendors & Provenance Boundaries (for 50% threat score dampening & hijack monitoring)
+TRUSTED_VENDORS: Dict[str, Dict[str, List[str]]] = {
+    # Major Cloud & Tech Platforms
+    "google": {
+        "domains": ["google.com", "deepmind.com", "android.com", "golang.org", "chromium.org"],
+        "github_orgs": ["github.com/google", "github.com/googleapis", "github.com/googlecloudplatform", "github.com/google-deepmind", "github.com/golang"],
+        "npm_scopes": ["@google", "@google-cloud", "@googleapis", "@angular", "@polymer"],
+    },
+    "microsoft": {
+        "domains": ["microsoft.com", "azure.com", "github.com", "nuget.org", "typescriptlang.org"],
+        "github_orgs": ["github.com/microsoft", "github.com/azure", "github.com/azure-samples", "github.com/dotnet"],
+        "npm_scopes": ["@microsoft", "@azure", "@azure-rest", "@types"],
+    },
+    "amazon": {
+        "domains": ["amazon.com", "amazonaws.com", "aws.amazon.com"],
+        "github_orgs": ["github.com/aws", "github.com/awslabs", "github.com/amzn", "github.com/boto"],
+        "npm_scopes": ["@aws-sdk", "@aws-cdk", "@amzn"],
+    },
+    "meta": {
+        "domains": ["meta.com", "fb.com", "facebook.com", "instagram.com", "pytorch.org"],
+        "github_orgs": ["github.com/facebook", "github.com/meta-llama", "github.com/pytorch", "github.com/facebookresearch"],
+        "npm_scopes": ["@facebook", "@meta"],
+    },
+    "apple": {
+        "domains": ["apple.com", "swift.org"],
+        "github_orgs": ["github.com/apple", "github.com/swiftlang"],
+        "npm_scopes": ["@apple"],
+    },
+    "cloudflare": {
+        "domains": ["cloudflare.com"],
+        "github_orgs": ["github.com/cloudflare"],
+        "npm_scopes": ["@cloudflare"],
+    },
+
+    # Frontier AI Labs & ML Ecosystem
+    "openai": {
+        "domains": ["openai.com"],
+        "github_orgs": ["github.com/openai"],
+        "npm_scopes": ["@openai"],
+    },
+    "anthropic": {
+        "domains": ["anthropic.com"],
+        "github_orgs": ["github.com/anthropics", "github.com/anthropic"],
+        "npm_scopes": ["@anthropic-ai"],
+    },
+    "huggingface": {
+        "domains": ["huggingface.co", "hf.co"],
+        "github_orgs": ["github.com/huggingface"],
+        "npm_scopes": ["@huggingface"],
+    },
+    "mistral": {
+        "domains": ["mistral.ai"],
+        "github_orgs": ["github.com/mistralai"],
+        "npm_scopes": ["@mistralai"],
+    },
+    "cohere": {
+        "domains": ["cohere.com", "cohere.ai"],
+        "github_orgs": ["github.com/cohere-ai"],
+        "npm_scopes": ["@cohere-ai"],
+    },
+    "deepseek": {
+        "domains": ["deepseek.com"],
+        "github_orgs": ["github.com/deepseek-ai"],
+        "npm_scopes": ["@deepseek"],
+    },
+    "langchain": {
+        "domains": ["langchain.com", "langchain.dev"],
+        "github_orgs": ["github.com/langchain-ai"],
+        "npm_scopes": ["@langchain"],
+    },
+    "ollama": {
+        "domains": ["ollama.com", "ollama.ai"],
+        "github_orgs": ["github.com/ollama"],
+        "npm_scopes": ["@ollama"],
+    },
+
+    # Core Open-Source Foundations & Ecosystems
+    "python": {
+        "domains": ["python.org", "pypa.io"],
+        "github_orgs": ["github.com/python", "github.com/pypa"],
+        "npm_scopes": [],
+    },
+    "apache": {
+        "domains": ["apache.org"],
+        "github_orgs": ["github.com/apache"],
+        "npm_scopes": ["@apache"],
+    },
+    "openjs": {
+        "domains": ["openjsf.org", "nodejs.org", "npmjs.com"],
+        "github_orgs": ["github.com/nodejs", "github.com/openjs-foundation", "github.com/npm"],
+        "npm_scopes": ["@types", "@npm", "@nodejs"],
+    },
+
+    # Standard Tooling, Binding & Security Infrastructure
+    "pybind": {
+        "domains": [],
+        "github_orgs": ["github.com/pybind"],
+        "npm_scopes": [],
+    },
+    "pydantic": {
+        "domains": ["pydantic.dev"],
+        "github_orgs": ["github.com/pydantic"],
+        "npm_scopes": [],
+    },
+    "sentry": {
+        "domains": ["sentry.io", "getsentry.com"],
+        "github_orgs": ["github.com/getsentry"],
+        "npm_scopes": ["@sentry"],
+    },
+    "datadog": {
+        "domains": ["datadoghq.com"],
+        "github_orgs": ["github.com/datadog"],
+        "npm_scopes": ["@datadog"],
+    },
+    "hashicorp": {
+        "domains": ["hashicorp.com"],
+        "github_orgs": ["github.com/hashicorp"],
+        "npm_scopes": ["@hashicorp"],
+    },
+    "vercel": {
+        "domains": ["vercel.com", "nextjs.org"],
+        "github_orgs": ["github.com/vercel"],
+        "npm_scopes": ["@vercel", "@next"],
+    },
+    "docker": {
+        "domains": ["docker.com"],
+        "github_orgs": ["github.com/docker"],
+        "npm_scopes": ["@docker"],
+    },
+    "pallets": {
+        "domains": ["palletsprojects.com"],
+        "github_orgs": ["github.com/pallets"],
+        "npm_scopes": [],
+    },
+    "stripe": {
+        "domains": ["stripe.com"],
+        "github_orgs": ["github.com/stripe"],
+        "npm_scopes": ["@stripe"],
+    },
+    "snowflake": {
+        "domains": ["snowflake.com"],
+        "github_orgs": ["github.com/snowflakedb"],
+        "npm_scopes": ["@snowflake"],
+    },
+    "supabase": {
+        "domains": ["supabase.com", "supabase.io"],
+        "github_orgs": ["github.com/supabase"],
+        "npm_scopes": ["@supabase"],
+    },
+    "okta": {
+        "domains": ["okta.com", "auth0.com"],
+        "github_orgs": ["github.com/okta", "github.com/auth0"],
+        "npm_scopes": ["@okta", "@auth0"],
+    },
+}

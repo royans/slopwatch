@@ -261,6 +261,14 @@ _CATALOG_ENTRIES: List[SignalSpec] = [
     _spec("SIGNAL_URL_CONFUSION_HIJACKING", "Upstream repo URL hijacking", SignalCategory.PROVENANCE.value,
           Severity.HIGH.value, default_score=30, ui_badge="🔗 SourceRank Hijack",
           description="Package claims a legitimate high-profile upstream repository URL to inflate trust."),
+    _spec("SIGNAL_TRUSTED_VENDOR_DISCOUNT", "Trusted vendor threat score dampening", SignalCategory.PROVENANCE.value,
+          Severity.INFO.value, default_score=0, kind=FindingKind.OBSERVATION.value, ui_badge="🛡️ Trusted Vendor",
+          ui_facet="is_trusted_vendor",
+          description="Package lineage matches verified trusted vendor; applied 50% threat score dampening to balance false positives against hijack detection."),
+    _spec("SIGNAL_POTENTIAL_VENDOR_ACCOUNT_TAKEOVER", "Potential vendor account takeover / hijack", SignalCategory.PROVENANCE.value,
+          Severity.CRITICAL.value, default_score=50, is_code_execution=True, gates_malicious=True,
+          ui_badge="🚨 Possible Vendor Hijack", ui_facet="has_potential_hijack",
+          description="Critical weaponized payload detected on a package associated with a trusted vendor. High risk of account takeover or compromised release pipeline."),
 
     # ---------- Package effort ----------
     _spec("SIGNAL_HIGH_DOCUMENTATION_EFFORT", "Rich documentation effort", SignalCategory.PACKAGE_EFFORT.value,

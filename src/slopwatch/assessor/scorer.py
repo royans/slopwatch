@@ -11,7 +11,7 @@ Evaluates package risks across an explicit, additive point rubric:
 
 import asyncio
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any, Set
+from typing import List, Optional, Dict, Any, Set, Tuple
 from pydantic import BaseModel
 
 from slopwatch.core.dto import (
@@ -25,6 +25,7 @@ from slopwatch.core.taxonomies import (
     VENDOR_DOMAINS,
     PUBLIC_EMAIL_PROVIDERS,
     DISPOSABLE_EMAIL_DOMAINS,
+    TRUSTED_VENDORS,
 )
 from slopwatch.core.signals import build_findings
 
@@ -417,6 +418,51 @@ class ProgressiveThreatEvaluator:
                     return True
         return False
 
+    def identify_trusted_vendor(
+        self,
+        package_name: str,
+        author_email: Optional[str] = None,
+        homepage: Optional[str] = None,
+        project_urls: Optional[Dict[str, str]] = None,
+    ) -> Optional[Tuple[str, str]]:
+        """
+        Check if package is published by or affiliated with a trusted vendor.
+        Returns (vendor_key, matched_by) e.g. ('google', 'domain:google.com') if verified.
+        """
+        pkg_lower = package_name.lower().strip()
+        # 1. Check npm scope or name prefix
+        for vkey, vdata in TRUSTED_VENDORS.items():
+            for scope in vdata.get("npm_scopes", []):
+                if pkg_lower.startswith(f"{scope.lower()}/") or pkg_lower == scope.lower():
+                    return vkey, f"scope:{scope}"
+
+        # 2. Check author email domain
+        if author_email:
+            clean_email = author_email.lower().strip()
+            clean_domain = clean_email.split("@")[-1] if "@" in clean_email else ""
+            if clean_domain:
+                for vkey, vdata in TRUSTED_VENDORS.items():
+                    for domain in vdata.get("domains", []):
+                        if clean_domain == domain.lower() or clean_domain.endswith(f".{domain.lower()}"):
+                            return vkey, f"domain:{domain}"
+
+        # 3. Check repository / homepage lineage
+        urls_to_check: List[str] = []
+        if homepage:
+            urls_to_check.append(homepage.lower().strip())
+        if project_urls and isinstance(project_urls, dict):
+            for u in project_urls.values():
+                if isinstance(u, str):
+                    urls_to_check.append(u.lower().strip())
+
+        for url in urls_to_check:
+            for vkey, vdata in TRUSTED_VENDORS.items():
+                for org in vdata.get("github_orgs", []):
+                    if org.lower() in url:
+                        return vkey, f"repo:{org}"
+
+        return None
+
     def check_url_confusion_hijacking(
         self,
         package_name: str,
@@ -602,9 +648,26 @@ class ProgressiveThreatEvaluator:
                     verdict=ThreatVerdict.SUSPICIOUS if candidate.risk_weight >= 60 else ThreatVerdict.BENIGN_COMMUNITY,
                 )
 
-            # Check Official Vendor Domain Proof vs Organizational Domain Alignment
+            # Check Official Vendor Domain Proof vs Organizational Domain Alignment vs Trusted Vendor
             is_vendor_domain = self.verify_vendor_ownership(candidate.entity_token, meta.author_email)
             is_vendor_repo = self.verify_vendor_repo_lineage(candidate.entity_token, meta.homepage)
+            trusted_vendor_match = self.identify_trusted_vendor(
+                package_name=pkg_name,
+                author_email=meta.author_email,
+                homepage=meta.homepage,
+                project_urls=meta.project_urls,
+            )
+            is_trusted_vendor = bool(is_vendor_domain or is_vendor_repo or trusted_vendor_match)
+            trusted_vendor_id = (
+                trusted_vendor_match[0]
+                if trusted_vendor_match
+                else (candidate.entity_token if (is_vendor_domain or is_vendor_repo) else None)
+            )
+            trusted_matched_by = (
+                trusted_vendor_match[1]
+                if trusted_vendor_match
+                else ("domain" if is_vendor_domain else "repo")
+            )
 
             from slopwatch.core.normalizers import extract_clean_email_and_domain
             clean_author_email, author_domain = extract_clean_email_and_domain(meta.author_email)
@@ -629,6 +692,19 @@ class ProgressiveThreatEvaluator:
                         rule_code="RULE_OFFICIAL_AUTHOR_DOMAIN",
                         human_description=f"Author email '{meta.author_email}' verified as authorized official vendor domain.",
                         metadata={"author_email": meta.author_email, "entity": candidate.entity_token},
+                    )
+                )
+                accumulated_score = 0
+            elif trusted_vendor_match:
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_OFFICIAL_VENDOR_DOMAIN_VERIFIED" if "domain" in trusted_matched_by else "SIGNAL_OFFICIAL_VENDOR_REPO_LINEAGE",
+                        category="VENDOR_AUTHENTICITY",
+                        severity="INFO",
+                        score_impact=-50,
+                        rule_code="RULE_OFFICIAL_AUTHOR_DOMAIN" if "domain" in trusted_matched_by else "RULE_OFFICIAL_REPO_LINEAGE",
+                        human_description=f"Package lineage verified as trusted vendor '{trusted_vendor_id}' via {trusted_matched_by}.",
+                        metadata={"vendor": trusted_vendor_id, "matched_by": trusted_matched_by},
                     )
                 )
                 accumulated_score = 0
@@ -659,7 +735,7 @@ class ProgressiveThreatEvaluator:
                         metadata={"author_email": meta.author_email, "matched_token": domain_root, "author_domain": author_domain},
                     )
                 )
-            elif is_known_brand:
+            elif is_known_brand and not is_trusted_vendor:
                 accumulated_score += 25
                 evidence_signals.append(
                     EvidenceSignal(
@@ -1026,6 +1102,30 @@ class ProgressiveThreatEvaluator:
                     )
                 )
 
+            # ==================== 5c. TRUSTED VENDOR 50% SCORE DAMPENING ====================
+            if is_trusted_vendor and accumulated_score > 0:
+                orig_score = accumulated_score
+                accumulated_score = max(0, int(accumulated_score * 0.5))
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_TRUSTED_VENDOR_DISCOUNT",
+                        category="VENDOR_AUTHENTICITY",
+                        severity="INFO",
+                        score_impact=accumulated_score - orig_score,
+                        rule_code="RULE_TRUSTED_VENDOR_DISCOUNT",
+                        human_description=(
+                            f"Package affiliated with trusted vendor '{trusted_vendor_id}' ({trusted_matched_by}). "
+                            f"Applied 50% threat score dampening ({orig_score} -> {accumulated_score}) to reduce false positives while retaining hijack/takeover detection."
+                        ),
+                        metadata={
+                            "vendor": trusted_vendor_id,
+                            "matched_by": trusted_matched_by,
+                            "original_score": orig_score,
+                            "dampened_score": accumulated_score,
+                        },
+                    )
+                )
+
             # ==================== 6. SIGNAL QUALITY & IMPACT METRICS ====================
             critical_count = sum(1 for s in evidence_signals if s.severity == "CRITICAL" and s.score_impact > 0)
             high_count = sum(1 for s in evidence_signals if s.severity == "HIGH" and s.score_impact > 0)
@@ -1050,11 +1150,31 @@ class ProgressiveThreatEvaluator:
                 }
             )
 
-            is_official_vendor = is_vendor_domain or (is_vendor_repo and (monthly_dl >= 1000 or ast_report.total_lines_of_code >= 200))
+            is_official_vendor = is_vendor_domain or (is_vendor_repo and (monthly_dl >= 1000 or ast_report.total_lines_of_code >= 200)) or (is_trusted_vendor and not has_malware_hooks and (monthly_dl >= 50 or ast_report.total_lines_of_code >= 30 or is_vendor_domain))
 
-            if is_official_vendor:
+            # Hijack / Account takeover detection on trusted/official vendor package:
+            # If weaponized malware hooks fired on a trusted vendor, DO NOT zero it out!
+            if (is_official_vendor or is_trusted_vendor) and has_malware_hooks and not is_deprecated_pkg:
+                verdict = ThreatVerdict.MALICIOUS
+                final_score = max(75, accumulated_score + 25)
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_POTENTIAL_VENDOR_ACCOUNT_TAKEOVER",
+                        category="VENDOR_AUTHENTICITY",
+                        severity="CRITICAL",
+                        score_impact=50,
+                        rule_code="RULE_VENDOR_TAKEOVER_ALERT",
+                        human_description=(
+                            f"CRITICAL: Weaponized payload detected on package affiliated with trusted vendor '{trusted_vendor_id}'. "
+                            f"High probability of vendor account takeover, compromised credentials, or malicious release."
+                        ),
+                        is_critical=True,
+                        metadata={"vendor": trusted_vendor_id, "flags": ast_report.flags},
+                    )
+                )
+            elif is_official_vendor:
                 verdict = ThreatVerdict.VERIFIED_OFFICIAL
-                final_score = 0
+                final_score = min(20, accumulated_score)
             elif is_deprecated_pkg and days_dormant > 730:
                 # Pre-AI historical packages abandoned/deprecated years ago (e.g. gemini-web from 2017)
                 # are legacy projects, not active modern slopsquatting attacks.
