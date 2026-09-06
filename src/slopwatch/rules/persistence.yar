@@ -56,3 +56,32 @@ rule Persistence_Windows_Registry_Run {
     condition:
         any of them
 }
+
+rule Persistence_Shortcut_Hijacking {
+    meta:
+        prefix = "SYSTEM_PERSISTENCE_TAMPERING"
+        label = "Shortcut Hijacking (.lnk Rewrite / Browser Extension Sideload)"
+        category = "persistence"
+        severity = 90
+        description = "Rewrites an existing desktop/Start Menu/taskbar .lnk shortcut via WScript.Shell COM automation (MITRE ATT&CK T1547.009), commonly to inject --load-extension and auto-sideload a malicious browser extension on every launch"
+    strings:
+        // WScript.Shell.CreateShortcut() is the real API used to read/modify an
+        // EXISTING .lnk file's target/arguments — a normal package has no
+        // legitimate reason to touch other applications' pre-existing shortcuts.
+        // Real confirmed-malicious sample this was written for: "beautifulsup4"
+        // (typosquats beautifulsoup4), which walks the Start Menu / Quick Launch
+        // / Desktop / TaskBar looking for chrome.exe/msedge.exe/brave.exe
+        // shortcuts and rewrites their Arguments to `--load-extension=` a
+        // clipboard-hijacking crypto-address-swapper extension it just dropped.
+        $create_shortcut = /\.CreateShortcut\s*\(/ ascii
+        $wscript_shell = /WScript\.Shell/ ascii
+        // Requiring co-occurrence with the extension-sideload flag makes this
+        // the strongest possible signal without the ambiguity of $load_ext
+        // alone (legitimate browser-automation test tooling can pass
+        // --load-extension for its OWN bundled extension under test — but never
+        // via WScript.Shell shortcut rewriting, which is the actual
+        // persistence mechanism, not test automation).
+        $load_ext = /--load-extension=/ ascii nocase
+    condition:
+        ($create_shortcut and $wscript_shell) or $load_ext and $wscript_shell
+}

