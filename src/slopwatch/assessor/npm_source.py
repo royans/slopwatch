@@ -22,6 +22,7 @@ from typing import Dict, List, Tuple
 
 from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
 from slopwatch.assessor.yara_engine import get_yara_scanner
+from slopwatch.core.confidence import distinct_signal_confidences, passes_confidence_gate
 
 SOURCE_FILE_EXTENSIONS = (".js", ".mjs", ".cjs", ".ts")
 SKIP_PATH_SUBSTRINGS = (
@@ -397,10 +398,17 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
     )
 
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if has_confirmed_weaponized_source:
-        verdict = ThreatVerdict.MALICIOUS
-    elif threat_score >= 35:
-        verdict = ThreatVerdict.SUSPICIOUS
+    if has_confirmed_weaponized_source or threat_score >= 35:
+        # See python_ast.py's identical gate for the full rationale. Real
+        # case this fixes: `playwright` — eval/network/env-access/base64,
+        # each individually ubiquitous in a browser-automation tool, no
+        # longer stack into a confident SUSPICIOUS/MALICIOUS label on their
+        # own. A genuinely HIGH-confidence signal still passes trivially.
+        confidences = distinct_signal_confidences(all_flags, get_yara_scanner())
+        if passes_confidence_gate(confidences):
+            verdict = ThreatVerdict.MALICIOUS if has_confirmed_weaponized_source else ThreatVerdict.SUSPICIOUS
+        else:
+            verdict = ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
 
     return ASTSecurityReport(
         has_socket=any("SOURCE_CODE_NETWORK_CALL" in f for f in all_flags),
@@ -430,8 +438,9 @@ def merge_ast_reports(manifest_report: ASTSecurityReport, source_report: ASTSecu
     has_real_source_metrics = source_report.total_source_files > 0
 
     verdict_rank = {
-        ThreatVerdict.MALICIOUS: 4,
-        ThreatVerdict.SUSPICIOUS: 3,
+        ThreatVerdict.MALICIOUS: 5,
+        ThreatVerdict.SUSPICIOUS: 4,
+        ThreatVerdict.UNVERIFIED_HIGH_SIGNAL: 3,
         ThreatVerdict.SQUATTED_STUB: 2,
         ThreatVerdict.BENIGN_COMMUNITY: 1,
         ThreatVerdict.VERIFIED_OFFICIAL: 0,

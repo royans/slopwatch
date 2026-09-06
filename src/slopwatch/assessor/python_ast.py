@@ -16,6 +16,7 @@ import warnings
 from typing import List, Tuple, Dict, Set, Optional
 from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
 from slopwatch.assessor.yara_engine import get_yara_scanner
+from slopwatch.core.confidence import distinct_signal_confidences, passes_confidence_gate
 
 DANGEROUS_MODULES = {
     "socket": 35,
@@ -599,14 +600,26 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
     )
 
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if is_install_script and (score >= 70 or any(f.startswith(("INSTALL_TIME_", "OBFUSCATED_DYNAMIC_ACCESS")) for f in flags)):
-        verdict = ThreatVerdict.MALICIOUS
-    elif has_confirmed_weaponized_source:
-        verdict = ThreatVerdict.MALICIOUS
-    elif any(f.startswith("MODULE_TOPLEVEL_EXECUTION") for f in flags):
-        verdict = ThreatVerdict.MALICIOUS
-    elif score >= 35:
-        verdict = ThreatVerdict.SUSPICIOUS
+    would_be_malicious = (
+        (is_install_script and (score >= 70 or any(f.startswith(("INSTALL_TIME_", "OBFUSCATED_DYNAMIC_ACCESS")) for f in flags)))
+        or has_confirmed_weaponized_source
+        or any(f.startswith("MODULE_TOPLEVEL_EXECUTION") for f in flags)
+    )
+    if would_be_malicious or score >= 35:
+        # The point-based logic above says this should be MALICIOUS or
+        # SUSPICIOUS — but is the evidence behind that actually strong, or a
+        # stack/single instance of individually-weak signals? See
+        # core/confidence.py. A single genuinely HIGH-confidence flag always
+        # passes this gate trivially, so real confirmed-dangerous cases are
+        # unaffected; this only demotes cases resting entirely on
+        # LOW/MEDIUM-confidence evidence (real case this catches:
+        # `agentdiscover`'s CROSS_ECOSYSTEM_WORM_PROPAGATION hit, a rule not
+        # yet confirmed reliable enough to gate MALICIOUS on its own).
+        confidences = distinct_signal_confidences(flags, yara_scanner)
+        if passes_confidence_gate(confidences):
+            verdict = ThreatVerdict.MALICIOUS if would_be_malicious else ThreatVerdict.SUSPICIOUS
+        else:
+            verdict = ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
     elif is_empty_stub:
         verdict = ThreatVerdict.SQUATTED_STUB
 
@@ -864,10 +877,19 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
     )
 
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if has_confirmed_malicious:
-        verdict = ThreatVerdict.MALICIOUS
-    elif max_score >= 35:
-        verdict = ThreatVerdict.SUSPICIOUS
+    if has_confirmed_malicious or max_score >= 35:
+        # See the identical gate in inspect_python_code_ast() above for the
+        # full rationale. Applied uniformly here too — has_confirmed_malicious
+        # includes prefixes not yet individually confidence-audited (e.g.
+        # CROSS_ECOSYSTEM_WORM_PROPAGATION), so it is NOT exempt: a real
+        # HIGH-confidence flag still passes this trivially, but a
+        # not-yet-verified or LOW-confidence one gets demoted correctly
+        # (real case: `agentdiscover`).
+        confidences = distinct_signal_confidences(all_flags, get_yara_scanner())
+        if passes_confidence_gate(confidences):
+            verdict = ThreatVerdict.MALICIOUS if has_confirmed_malicious else ThreatVerdict.SUSPICIOUS
+        else:
+            verdict = ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
     elif is_empty_stub and max_score == 0:
         verdict = ThreatVerdict.SQUATTED_STUB
 

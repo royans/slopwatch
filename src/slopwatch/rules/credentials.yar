@@ -170,6 +170,16 @@ rule Cred_IDE_AI_Agent_Hijacking {
         prefix = "CREDENTIAL_PATH_HARVESTING"
         label = "IDE / AI Agent Configuration Hijacking"
         category = "cred"
+        // Confirmed false-positive-prone TWICE in one session, on two
+        // different sub-patterns: `playwright` ($s2, bare "mcp.json", fixed
+        // by narrowing) and `agentdiscover` ($s1, the home-directory-scoped
+        // pattern believed well-designed until this — a legitimate MCP/agent
+        // *discovery* tool's lookup table of known config paths matches $s1
+        // exactly, since it's real code checking for ~/.cursor/mcp.json etc.
+        // by design). This rule cannot currently tell "path referenced to
+        // check for presence" from "path targeted for credential theft" —
+        // LOW until it can (e.g. requiring adjacent read/write-call context).
+        confidence = "LOW"
     strings:
         $s1 = /(~|\$HOME|%USERPROFILE%|%APPDATA%|Library\/Application Support)\/[^\s"'\)]*(\.(vscode|claude|gemini|cursor)|Claude|Cursor)\/(settings|tasks|rules|mcp|claude_desktop_config|\.cursorrules)/ ascii nocase
         // NOTE: bare `mcp.json` used to be in $s2 too, matched on nothing more

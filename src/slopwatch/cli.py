@@ -380,7 +380,7 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
 
         report = await adapter.download_and_inspect_payload(norm_name, meta.latest_version)
 
-        is_threat = report.verdict in (ThreatVerdict.MALICIOUS, ThreatVerdict.SUSPICIOUS)
+        is_threat = report.verdict in (ThreatVerdict.MALICIOUS, ThreatVerdict.SUSPICIOUS, ThreatVerdict.UNVERIFIED_HIGH_SIGNAL)
 
         if json_output:
             out = {
@@ -399,7 +399,12 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
                 sys.exit(1)
             return
 
-        verdict_color = "red" if report.verdict == ThreatVerdict.MALICIOUS else "yellow" if report.verdict == ThreatVerdict.SUSPICIOUS else "green"
+        verdict_color = (
+            "red" if report.verdict == ThreatVerdict.MALICIOUS
+            else "yellow" if report.verdict == ThreatVerdict.SUSPICIOUS
+            else "cyan" if report.verdict == ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
+            else "green"
+        )
         console.print(Panel(
             f"Heuristic Verdict: [{verdict_color}]{report.verdict.value}[/{verdict_color}] (Threat Score: {report.composite_threat_score}/100)\n"
             f"[dim]Static assessment based on AST code inspection and YARA threat rules. Heuristics may be imperfect; always inspect source code.[/dim]",

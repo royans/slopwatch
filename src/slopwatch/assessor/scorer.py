@@ -220,7 +220,14 @@ CONFIRMED_DANGEROUS_FLAG_PREFIXES = (
     "SOURCE_CODE_EVASIVE_PAYLOAD",      # anti-analysis evasion + execution/payload hook
     "PYTHON_PTH_CODE_EXECUTION",        # pypi: dangerous startup code in .pth file
     "GYP_WEAPONIZED_EXECUTION",         # npm: malicious node-gyp python escape or node execution
-    "CROSS_ECOSYSTEM_WORM_PROPAGATION", # npm/pypi: self-replicating worm logic
+    # CROSS_ECOSYSTEM_WORM_PROPAGATION deliberately NOT trusted as a blanket
+    # prefix here — see has_confirmed_dangerous_execution() below, which
+    # checks its per-rule confidence instead. Its 8 underlying YARA rules
+    # range from LOW (bare persistence-path string matches — real false
+    # positive: `agentdiscover`, a security scanner whose own detection
+    # signatures for OTHER agents' persistence techniques match identically)
+    # to HIGH (Shai-Hulud worm function-name signatures); unlike every other
+    # prefix in this tuple, it hasn't been uniformly verified reliable.
 )
 
 
@@ -260,6 +267,19 @@ def has_confirmed_dangerous_execution(flags: List[str]) -> bool:
     """
     if any(f.startswith(CONFIRMED_DANGEROUS_FLAG_PREFIXES) for f in flags):
         return True
+
+    # CROSS_ECOSYSTEM_WORM_PROPAGATION: only trust it when the SPECIFIC rule
+    # that matched is itself rated HIGH confidence (see the comment on
+    # CONFIRMED_DANGEROUS_FLAG_PREFIXES above for why this one gets special
+    # treatment). Import kept local to avoid a module-level cycle between
+    # scorer.py and yara_engine.py.
+    worm_flags = [f for f in flags if f.startswith("CROSS_ECOSYSTEM_WORM_PROPAGATION")]
+    if worm_flags:
+        from slopwatch.assessor.yara_engine import get_yara_scanner
+        from slopwatch.core.confidence import flag_confidence
+        scanner = get_yara_scanner()
+        if any(flag_confidence(f, scanner) == "HIGH" for f in worm_flags):
+            return True
 
     # Check for install-time execution hook
     is_install_time = any(f.startswith((

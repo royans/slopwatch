@@ -7,6 +7,8 @@ install, postinstall) for malicious shell execution and download cradles.
 
 from typing import Dict, Any, List
 from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
+from slopwatch.assessor.yara_engine import get_yara_scanner
+from slopwatch.core.confidence import distinct_signal_confidences, passes_confidence_gate
 
 DANGEROUS_COMMAND_PATTERNS = [
     ("curl", 35),
@@ -72,10 +74,18 @@ def analyze_npm_package_manifest(manifest_data: Dict[str, Any], package_name: st
 
     score = min(100, threat_score)
     verdict = ThreatVerdict.BENIGN_COMMUNITY
-    if score >= 70:
-        verdict = ThreatVerdict.MALICIOUS
-    elif score >= 35:
-        verdict = ThreatVerdict.SUSPICIOUS
+    if score >= 35:
+        # See python_ast.py's identical gate for the full rationale. Without
+        # this, this manifest-only report's own verdict (e.g. SUSPICIOUS from
+        # a bare LIFECYCLE_SCRIPT + MISSING_SOURCE_REPOSITORY_URL, neither
+        # confirming anything dangerous) could win merge_ast_reports' max()
+        # over a correctly-gated UNVERIFIED_HIGH_SIGNAL from the real source
+        # scan — real case this fixes: `node-sass`.
+        confidences = distinct_signal_confidences(flags, get_yara_scanner())
+        if passes_confidence_gate(confidences):
+            verdict = ThreatVerdict.MALICIOUS if score >= 70 else ThreatVerdict.SUSPICIOUS
+        else:
+            verdict = ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
     elif score > 0 or is_empty:
         verdict = ThreatVerdict.SQUATTED_STUB
 

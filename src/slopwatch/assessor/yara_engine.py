@@ -116,6 +116,7 @@ class YaraPatternScanner:
     def __init__(self, rules_path: Optional[str | Path] = None) -> None:
         self.rules_path = Path(rules_path) if rules_path else _find_default_rules_path()
         self._compiled_rules: Optional["yara.Rules"] = None
+        self._confidence_by_dedup_key: Dict[str, str] = {}
         self._load_rules()
 
     def _load_rules(self) -> None:
@@ -130,9 +131,45 @@ class YaraPatternScanner:
         try:
             self._compiled_rules = yara.compile(filepath=str(self.rules_path))
             logger.info("Successfully compiled YARA rules from %s", self.rules_path)
+            self._build_confidence_index()
         except Exception as e:
             logger.error("Failed to compile YARA rules from %s: %s", self.rules_path, e)
             self._compiled_rules = None
+
+    def _build_confidence_index(self) -> None:
+        """
+        Index every compiled rule's `confidence` meta by the same
+        f"{prefix}:{label}" dedup_key scan_file_content() keys its flags on,
+        so callers can resolve a flag's confidence without re-parsing .yar
+        source. Rules without a `confidence` meta are simply absent — callers
+        fall back to core.confidence.DEFAULT_CONFIDENCE.
+        """
+        if self._compiled_rules is None:
+            return
+        for rule in self._compiled_rules:
+            meta = rule.meta or {}
+            confidence = meta.get("confidence")
+            if not confidence:
+                continue
+            prefix = meta.get("prefix", "CODE_ANALYSIS")
+            label = meta.get("label", rule.identifier)
+            self._confidence_by_dedup_key[f"{prefix}:{label}"] = confidence
+
+    def get_confidence(self, dedup_key: str) -> Optional[str]:
+        """Confidence tier ("HIGH"/"MEDIUM"/"LOW") for a dedup_key as
+        returned by scan_file_content's flags, or None if that rule hasn't
+        been given a `confidence` meta yet (caller should apply
+        core.confidence.DEFAULT_CONFIDENCE)."""
+        return self._confidence_by_dedup_key.get(dedup_key)
+
+    @property
+    def confidence_index(self) -> Dict[str, str]:
+        """Every compiled rule's dedup_key -> confidence, for callers that
+        need to match against rendered flag text directly (see
+        core.confidence.flag_confidence — labels can contain internal single
+        quotes, e.g. "require('child_process')", which breaks any regex that
+        naively stops at the first quote)."""
+        return self._confidence_by_dedup_key
 
     @property
     def is_available(self) -> bool:

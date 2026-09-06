@@ -34,6 +34,13 @@ class ThreatVerdict(str, Enum):
     SQUATTED_STUB = "SQUATTED_STUB"            # Empty package, 0 code, name reservation
     SUSPICIOUS = "SUSPICIOUS"                  # Anomalous metadata, unverified author, low effort
     MALICIOUS = "MALICIOUS"                    # Verified install-time hooks, reverse shell, curl|bash
+    # The point score crossed the SUSPICIOUS/MALICIOUS threshold, but every
+    # contributing signal is individually low/medium-confidence (see
+    # core/confidence.py) — real signal, not yet strong enough on its own to
+    # confidently assert malice. Confirmed real-world cases this protects
+    # against: `playwright`, `agentdiscover` (both legitimate, both would
+    # otherwise show SUSPICIOUS/"POTENTIALLY MALICIOUS").
+    UNVERIFIED_HIGH_SIGNAL = "UNVERIFIED_HIGH_SIGNAL"
 
 
 class EvidenceSignal(BaseModel):
