@@ -134,6 +134,8 @@ class DomainTrustEngine:
         with self._lock:
             self._cache[clean] = reputation
 
+    register_reputation = set_domain_reputation
+
     def update_reputations_bulk(self, reps: Dict[str, DomainReputation]) -> None:
         """Bulk load or update reputations."""
         with self._lock:

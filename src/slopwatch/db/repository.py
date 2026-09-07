@@ -34,6 +34,7 @@ from slopwatch.db.models import (
     SignalFindingModel,
     ScanAuditLogModel,
     DailyReviewLogModel,
+    DomainReputationModel,
 )
 from slopwatch.core.signals import findings_from_analysis_details, severity_rank
 
@@ -1180,17 +1181,93 @@ class SlopWatchRepository:
         return reputations
 
     async def get_domain_reputation(self, domain: str) -> Optional[Any]:
-        """Get or compute dynamic reputation for a specific author domain."""
+        """Get dynamic reputation for a specific author domain, using materialized table or in-memory cache."""
         if not domain:
             return None
-        from slopwatch.core.domain_trust import get_shared_domain_trust_engine
+        clean_dom = domain.lower().strip()
+        from slopwatch.core.domain_trust import DomainReputation, get_shared_domain_trust_engine
         engine = get_shared_domain_trust_engine()
-        cached = engine.get_domain_reputation(domain)
+        cached = engine.get_domain_reputation(clean_dom)
         if cached is not None:
             return cached
-        # Populate all reputations on first miss
+
+        # Check materialized table first
+        try:
+            query = select(DomainReputationModel).where(DomainReputationModel.domain == clean_dom)
+            res = await self.session.execute(query)
+            row = res.scalar_one_or_none()
+            if row:
+                rep = DomainReputation(
+                    domain=row.domain,
+                    package_count=row.package_count,
+                    first_published_at=row.first_published_at,
+                    latest_published_at=row.latest_published_at,
+                    span_days=row.span_days,
+                    trust_score=row.trust_score,
+                    is_generic_esp=row.is_generic_esp,
+                    has_malware=row.has_malware,
+                    malicious_count=row.malicious_count,
+                    suspicious_count=row.suspicious_count,
+                )
+                engine.register_reputation(rep)
+                return rep
+        except Exception:
+            pass
+
+        # Fall back to evaluating from squat_detections
         reps = await self.get_all_domain_reputations()
-        return reps.get(domain.lower().strip())
+        return reps.get(clean_dom)
+
+    async def refresh_domain_reputations(self) -> int:
+        """
+        Aggregate detections and materialize all domain reputations into domain_reputations table.
+        Returns the count of materialized domains.
+        """
+        reputations = await self.get_all_domain_reputations()
+        if not reputations:
+            return 0
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+
+        batch = []
+        for rep in reputations.values():
+            batch.append({
+                "domain": rep.domain,
+                "package_count": rep.package_count,
+                "first_published_at": rep.first_published_at,
+                "latest_published_at": rep.latest_published_at,
+                "span_days": rep.span_days,
+                "trust_score": rep.trust_score,
+                "is_generic_esp": rep.is_generic_esp,
+                "has_malware": rep.has_malware,
+                "malicious_count": rep.malicious_count,
+                "suspicious_count": rep.suspicious_count,
+                "updated_at": now,
+            })
+
+        chunk_size = 200
+        for i in range(0, len(batch), chunk_size):
+            chunk = batch[i:i + chunk_size]
+            stmt = sqlite_insert(DomainReputationModel).values(chunk)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["domain"],
+                set_={
+                    "package_count": stmt.excluded.package_count,
+                    "first_published_at": stmt.excluded.first_published_at,
+                    "latest_published_at": stmt.excluded.latest_published_at,
+                    "span_days": stmt.excluded.span_days,
+                    "trust_score": stmt.excluded.trust_score,
+                    "is_generic_esp": stmt.excluded.is_generic_esp,
+                    "has_malware": stmt.excluded.has_malware,
+                    "malicious_count": stmt.excluded.malicious_count,
+                    "suspicious_count": stmt.excluded.suspicious_count,
+                    "updated_at": stmt.excluded.updated_at,
+                }
+            )
+            await self.session.execute(stmt)
+        await self.session.commit()
+        return len(batch)
 
 
 

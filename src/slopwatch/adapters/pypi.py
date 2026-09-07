@@ -321,6 +321,21 @@ class PyPIAdapter(BaseRegistryAdapter):
                 elif is_inactive:
                     deprecation_reason = "Development Status :: 7 - Inactive"
 
+                # Check PyPI provenance (Trusted Publishing / Sigstore / GitHub Actions OIDC)
+                has_provenance = False
+                provenance_type = None
+                for u in urls:
+                    if u.get("provenance") or u.get("has_sigstore"):
+                        has_provenance = True
+                        provenance_type = "pypi_trusted_publisher_oidc"
+                        break
+                if not has_provenance and version and version in releases:
+                    for u in releases[version]:
+                        if u.get("provenance") or u.get("has_sigstore"):
+                            has_provenance = True
+                            provenance_type = "pypi_trusted_publisher_oidc"
+                            break
+
                 meta = PackageMetadata(
                     ecosystem=Ecosystem.PYPI,
                     package_name=norm_name,
@@ -341,6 +356,8 @@ class PyPIAdapter(BaseRegistryAdapter):
                     daily_downloads=daily_downloads,
                     is_deprecated=is_deprecated,
                     deprecation_reason=deprecation_reason,
+                    has_provenance=has_provenance,
+                    provenance_type=provenance_type,
                 )
 
                 self.cache.save_cached_metadata("pypi", norm_name, meta.model_dump(mode="json"))

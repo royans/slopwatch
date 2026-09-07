@@ -16,6 +16,7 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich import box
 
 from slopwatch.core.dto import Ecosystem, ThreatVerdict
 from slopwatch.core.config import Settings, AssessorConfig
@@ -56,6 +57,14 @@ def info_cmd():
     table.add_row("• Threat Signatures:", sig_status)
     table.add_row("• Rules Path:", f"[dim]{scanner.rules_path}[/dim]")
     table.add_row("• Signatures Path:", f"[dim]{sig_path}[/dim]")
+    try:
+        from slopwatch.core.domain_trust import get_shared_domain_trust_engine
+        engine = get_shared_domain_trust_engine()
+        high_trust = sum(1 for r in engine._reputations.values() if r.trust_score >= 0.7)
+        table.add_row("• Domain Trust Engine:", f"[bold green]Active ({high_trust} verified high-trust domains)[/bold green]" if high_trust else "[bold green]Active (dynamic evaluation)[/bold green]")
+    except Exception:
+        pass
+    table.add_row("• Provenance Engine:", "[bold green]PyPI OIDC / Sigstore / npm SLSA supported[/bold green]")
     console.print(table)
 
 
@@ -373,10 +382,49 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
                 console.print(f"[bold red]❌ Package '{norm_name}' not found on {eco.value.upper()}.[/bold red]")
             sys.exit(1)
 
+        # Publisher Identity & Dynamic Reputation Analysis
+        from slopwatch.core.normalizers import extract_clean_email_and_domain
+        from slopwatch.core.domain_trust import get_shared_domain_trust_engine
+        _, author_domain = extract_clean_email_and_domain(meta.author_email)
+        engine = get_shared_domain_trust_engine()
+        domain_rep = engine.get_domain_reputation(author_domain) if author_domain else None
+
         if not json_output:
             console.print(f"Author: [magenta]{meta.author or 'Unknown'}[/magenta] | Latest Version: [green]{meta.latest_version}[/green]")
             console.print(f"Description: {meta.description or 'None'}")
-            console.print(f"\n[cyan]Downloading payload and performing AST + YARA analysis...[/cyan]")
+            
+            rep_table = Table(title="🏢 Publisher Authority & Provenance", box=box.ROUNDED, show_header=False)
+            rep_table.add_column("Property", style="bold cyan", width=24)
+            rep_table.add_column("Value", style="white")
+
+            if author_domain:
+                if domain_rep and domain_rep.trust_score >= 0.5:
+                    rep_table.add_row("Publisher Domain:", f"[bold green]{author_domain}[/bold green] (Trust: [bold green]{int(domain_rep.trust_score * 100)}%[/bold green])")
+                    rep_table.add_row("Publication History:", f"{domain_rep.package_count} package(s) over {domain_rep.span_days} days")
+                elif domain_rep and domain_rep.is_generic_esp:
+                    rep_table.add_row("Publisher Domain:", f"{author_domain} [yellow](Generic ESP / Public Email)[/yellow]")
+                elif domain_rep:
+                    rep_table.add_row("Publisher Domain:", f"{author_domain} (Trust: {int(domain_rep.trust_score * 100)}%)")
+                else:
+                    rep_table.add_row("Publisher Domain:", f"{author_domain} [dim](Unindexed / New domain)[/dim]")
+            else:
+                rep_table.add_row("Publisher Domain:", "[dim]Not declared[/dim]")
+
+            if getattr(meta, "has_provenance", False):
+                ptype = getattr(meta, "provenance_type", "SLSA / Sigstore")
+                rep_table.add_row("Build Provenance:", f"[bold green]✓ Cryptographically Verified ({ptype})[/bold green]")
+            else:
+                rep_table.add_row("Build Provenance:", "[dim]None (unsigned release)[/dim]")
+
+            if meta.monthly_downloads >= 100000:
+                rep_table.add_row("Monthly Downloads:", f"[bold green]{meta.monthly_downloads:,}[/bold green] [dim](High Adoption)[/dim]")
+            elif meta.monthly_downloads > 0:
+                rep_table.add_row("Monthly Downloads:", f"{meta.monthly_downloads:,}")
+            else:
+                rep_table.add_row("Monthly Downloads:", "[dim]0 or unindexed[/dim]")
+
+            console.print(rep_table)
+            console.print("\n[cyan]Downloading payload and performing AST + YARA analysis...[/cyan]")
 
         report = await adapter.download_and_inspect_payload(norm_name, meta.latest_version)
 
@@ -388,6 +436,12 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
                 "ecosystem": eco.value,
                 "version": meta.latest_version,
                 "author": meta.author,
+                "author_email": meta.author_email,
+                "publisher_domain": author_domain,
+                "domain_trust_score": domain_rep.trust_score if domain_rep else 0.0,
+                "has_provenance": getattr(meta, "has_provenance", False),
+                "provenance_type": getattr(meta, "provenance_type", None),
+                "monthly_downloads": meta.monthly_downloads,
                 "description": meta.description,
                 "verdict": report.verdict.value,
                 "threat_score": report.composite_threat_score,

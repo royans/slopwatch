@@ -4,6 +4,7 @@ Sentinel Database ORM Models.
 
 from datetime import datetime, timezone
 from sqlalchemy import (
+    Float,
     Column,
     String,
     Integer,
@@ -200,3 +201,27 @@ class DailyReviewLogModel(Base):
     )
 
 
+
+
+class DomainReputationModel(Base):
+    """
+    Materialized aggregate domain reputations for fast O(1) indexed lookup.
+    """
+    __tablename__ = "domain_reputations"
+
+    domain = Column(String(255), primary_key=True)
+    package_count = Column(Integer, nullable=False, default=0)
+    first_published_at = Column(DateTime(timezone=True), nullable=True)
+    latest_published_at = Column(DateTime(timezone=True), nullable=True)
+    span_days = Column(Integer, nullable=False, default=0)
+    trust_score = Column(Float, nullable=False, default=0.0)
+    is_generic_esp = Column(Boolean, nullable=False, default=False)
+    has_malware = Column(Boolean, nullable=False, default=False)
+    malicious_count = Column(Integer, nullable=False, default=0)
+    suspicious_count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc).replace(microsecond=0), nullable=False)
+
+    __table_args__ = (
+        Index("idx_domain_trust_score", "trust_score"),
+        Index("idx_domain_pkg_count", "package_count"),
+    )

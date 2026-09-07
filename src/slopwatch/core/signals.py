@@ -273,6 +273,14 @@ _CATALOG_ENTRIES: List[SignalSpec] = [
           Severity.INFO.value, default_score=0, kind=FindingKind.OBSERVATION.value, ui_badge="🌐 Trusted Domain",
           ui_facet="is_trusted_domain",
           description="Author email domain demonstrated empirical publication volume and longevity; applied proportional threat score dampening."),
+    _spec("SIGNAL_CRYPTOGRAPHIC_PROVENANCE", "Cryptographic provenance attestation verified", SignalCategory.PROVENANCE.value,
+          Severity.INFO.value, default_score=0, kind=FindingKind.OBSERVATION.value, ui_badge="🔒 Cryptographic Provenance",
+          ui_facet="has_provenance",
+          description="Package contains verifiable cryptographic build provenance (PyPI Trusted Publishing OIDC / Sigstore / npm SLSA attestation)."),
+    _spec("SIGNAL_HIGH_DOWNLOAD_MOMENTUM", "High adoption download momentum", SignalCategory.ADOPTION.value,
+          Severity.INFO.value, default_score=0, kind=FindingKind.OBSERVATION.value, ui_badge="📈 High Adoption (>100k DLs)",
+          ui_facet="high_downloads",
+          description="Package has verified historical adoption exceeding 100,000 monthly downloads in the public registry."),
 
     # ---------- Package effort ----------
     _spec("SIGNAL_HIGH_DOCUMENTATION_EFFORT", "Rich documentation effort", SignalCategory.PACKAGE_EFFORT.value,

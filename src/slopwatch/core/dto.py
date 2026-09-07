@@ -143,6 +143,8 @@ class PackageMetadata(BaseModel):
     daily_downloads: int = 0
     is_deprecated: bool = False
     deprecation_reason: Optional[str] = None
+    has_provenance: bool = False
+    provenance_type: Optional[str] = None
 
 
 

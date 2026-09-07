@@ -685,11 +685,35 @@ class ProgressiveThreatEvaluator:
             from slopwatch.core.domain_trust import get_shared_domain_trust_engine
             domain_trust_engine = get_shared_domain_trust_engine()
             domain_rep = domain_trust_engine.get_domain_reputation(author_domain)
-            is_domain_trusted = bool(domain_rep and domain_rep.trust_score >= 0.7)
-            if is_domain_trusted and not is_trusted_vendor:
+
+            # Check cryptographic build provenance (PyPI Trusted Publishing OIDC / npm SLSA)
+            has_crypto_provenance = bool(getattr(meta, "has_provenance", False))
+            provenance_type = getattr(meta, "provenance_type", None) or "sigstore_oidc"
+            effective_trust_score = domain_rep.trust_score if domain_rep else 0.0
+            if has_crypto_provenance:
+                effective_trust_score = max(0.85, min(1.0, effective_trust_score + 0.35))
+
+            is_domain_trusted = bool(effective_trust_score >= 0.7)
+            if (is_domain_trusted or has_crypto_provenance) and not is_trusted_vendor:
                 is_trusted_vendor = True
-                trusted_vendor_id = author_domain
-                trusted_matched_by = f"dynamic_domain_trust:{int(domain_rep.trust_score * 100)}%"
+                trusted_vendor_id = author_domain or candidate.entity_token
+                trusted_matched_by = f"provenance:{provenance_type}" if has_crypto_provenance else f"dynamic_domain_trust:{int(effective_trust_score * 100)}%"
+
+            if has_crypto_provenance:
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_CRYPTOGRAPHIC_PROVENANCE",
+                        category="PROVENANCE",
+                        severity="INFO",
+                        score_impact=-30,
+                        rule_code="RULE_CRYPTOGRAPHIC_PROVENANCE",
+                        human_description=(
+                            f"Package release verified with cryptographic build provenance ({provenance_type}). "
+                            f"Guarantees authentic repository build pipeline and eliminates publisher domain spoofing risk."
+                        ),
+                        metadata={"provenance_type": provenance_type, "effective_trust_score": effective_trust_score},
+                    )
+                )
 
             if is_vendor_domain:
                 evidence_signals.append(
@@ -1065,6 +1089,22 @@ class ProgressiveThreatEvaluator:
             weekly_dl = meta.weekly_downloads or 0
             daily_dl = meta.daily_downloads or 0
 
+            if monthly_dl >= 100000:
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_HIGH_DOWNLOAD_MOMENTUM",
+                        category="ADOPTION",
+                        severity="INFO",
+                        score_impact=-20,
+                        rule_code="RULE_HIGH_DOWNLOAD_MOMENTUM",
+                        human_description=(
+                            f"Massive registry adoption verified: {monthly_dl:,} monthly downloads. "
+                            f"Package exhibits extensive community scrutiny."
+                        ),
+                        metadata={"monthly_downloads": monthly_dl},
+                    )
+                )
+
             if monthly_dl >= 10000:
                 adoption_tier = "HIGH_COMMUNITY_ADOPTION"
                 accumulated_score = max(0, accumulated_score - 40)
@@ -1175,6 +1215,24 @@ class ProgressiveThreatEvaluator:
                             "original_score": orig_score,
                             "dampened_score": accumulated_score,
                         },
+                    )
+                )
+
+            if monthly_dl >= 100000 and accumulated_score > 0 and not has_malware_hooks:
+                orig_score = accumulated_score
+                accumulated_score = max(0, int(accumulated_score * 0.5))
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_HIGH_DOWNLOAD_MOMENTUM",
+                        category="ADOPTION",
+                        severity="INFO",
+                        score_impact=accumulated_score - orig_score,
+                        rule_code="RULE_HIGH_DOWNLOAD_MOMENTUM",
+                        human_description=(
+                            f"Applied 50% download momentum dampening ({orig_score} -> {accumulated_score}) "
+                            f"due to massive community scrutiny ({monthly_dl:,} monthly downloads)."
+                        ),
+                        metadata={"monthly_downloads": monthly_dl, "original_score": orig_score, "dampened_score": accumulated_score},
                     )
                 )
 

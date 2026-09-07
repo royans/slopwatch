@@ -238,6 +238,10 @@ class NpmAdapter(BaseRegistryAdapter):
                     if not deprecation_reason:
                         deprecation_reason = "All versions deprecated"
 
+                # Check npm provenance (SLSA / Sigstore / GitHub Actions OIDC)
+                has_provenance = bool(dist.get("attestations")) or bool(dist.get("signatures"))
+                provenance_type = "npm_slsa_sigstore" if has_provenance else None
+
                 meta = PackageMetadata(
                     ecosystem=Ecosystem.NPM,
                     package_name=norm_name,
@@ -256,6 +260,8 @@ class NpmAdapter(BaseRegistryAdapter):
                     daily_downloads=max(0, weekly_downloads // 7),
                     is_deprecated=is_deprecated,
                     deprecation_reason=deprecation_reason,
+                    has_provenance=has_provenance,
+                    provenance_type=provenance_type,
                 )
 
                 self.cache.save_cached_metadata("npm", norm_name, meta.model_dump(mode="json"))
