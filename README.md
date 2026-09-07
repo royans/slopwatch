@@ -1,6 +1,7 @@
 # 🛡️ SlopWatch: Zero-LLM AI Hallucination & Supply Chain Threat Auditor
 
 [![SlopWatch CI](https://github.com/royans/slopwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/royans/slopwatch/actions/workflows/ci.yml)
+[![Self-Scan](https://github.com/royans/slopwatch/actions/workflows/self-scan.yml/badge.svg)](https://github.com/royans/slopwatch/actions/workflows/self-scan.yml)
 [![PyPI Version](https://img.shields.io/pypi/v/slopwatch.svg)](https://pypi.org/project/slopwatch/)
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://pypi.org/project/slopwatch/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -11,6 +12,8 @@
 > **Zero-LLM · 200ms Scans · Zero API Keys · Runs Offline**
 
 Designed for developers, CI/CD pipelines, and autonomous coding agents, SlopWatch protects against **AI package hallucinations** (when an LLM invents a plausible package name that an attacker registers) and **install-time execution traps** (`setup.py` hooks, `.pth` startup implants, npm lifecycle scripts) *before* dependencies touch your machine.
+
+**What SlopWatch looks at:** the dependencies your project pulls in — the package names in your `requirements.txt` / `package.json`, your lockfiles, and the upstream package archives themselves. It answers *"is it safe to install what my project (or my AI assistant) just told me to install?"* — it does **not** review the application code you write for style, correctness, or effort.
 
 > **Live Audits**: SlopWatch was developed for the [FlagThis](https://flagthis.com) website. A working live demonstration that performs live supply chain audits and threat intelligence indexing is available at [FlagThis.com](https://flagthis.com).
 
@@ -94,6 +97,7 @@ slopwatch init
 * Creates `.slopwatch.yaml` (customizable allowlist & alert policies).
 * Installs native `.git/hooks/pre-commit` so AI hallucinations can never be committed.
 * Installs `.github/workflows/slopwatch.yml` for pull request auditing.
+* Writes an `AGENTS.md` rule telling autonomous coding agents to run `slopwatch check` *before* adding a dependency (appended if the file already exists).
 * Runs an immediate baseline audit across all project dependencies.
 
 ### 1. Check Project Manifests for Hallucinations
@@ -103,10 +107,13 @@ Run `slopwatch check` to automatically discover and audit **all** dependency man
 slopwatch check                     # auto-discovers and audits all project manifests
 slopwatch check requirements.txt    # or specify an individual file directly
 slopwatch check ./backend           # or audit a specific subproject directory
+slopwatch check --stats             # add a run summary (deps scanned, registry calls, wall time)
+slopwatch check --ignore SLOP-0004  # demote a specific finding code to advisory-only
 ```
 
 * **Supported Manifests**: `requirements*.txt`, `pyproject.toml`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`.
 * **What It Catches**: Hallucinated package names (404s on public registry), brand typosquats, and unpinned direct VCS URLs.
+* **Stable finding codes**: every finding carries a `SLOP-XXXX` identifier ([catalog](docs/FINDINGS.md)) you can cite, diff, and suppress. Suppressed findings (via `allowlist` or `--ignore`) stay visible in a per-run ledger — never silently dropped.
 
 ### 2. Deep Static AST Inspection of an Upstream Package
 Fetch and statically inspect any published PyPI or npm package without executing its code:
@@ -167,9 +174,10 @@ SlopWatch is zero-config by default, but supports fine-grained tuning via `.slop
 
 * **Whitelisting Private Packages (`allowlist`)**: Permit internal company SDKs, private mirrors, or vetted direct VCS URLs.
 * **Alert & Failure Thresholds (`fail_on`)**: Control CI exit code behavior (`CRITICAL`, `HIGH` [default], `MEDIUM`, `ANY`).
+* **Finding-code suppression (`ignore` / `--ignore SLOP-XXXX`)**: Demote a specific finding from build-breaking to advisory. Suppressed findings stay visible in a per-run ledger — never silently dropped.
 * **Path Ignore Patterns (`ignore_paths`)**: Exclude test fixtures, mock data, or documentation.
 
-👉 **Read the complete [SlopWatch Configuration Guide](docs/CONFIGURATION.md)** for syntax examples, rubric tables, and CI/CD recipes.
+👉 **Read the complete [SlopWatch Configuration Guide](docs/CONFIGURATION.md)** for syntax examples, rubric tables, and CI/CD recipes, and the [Finding Code Catalog](docs/FINDINGS.md) for the stable `SLOP-XXXX` identifiers.
 
 ---
 
@@ -258,6 +266,7 @@ We believe security tools should be radically honest about their boundaries rath
 * **Honest about uncertainty**: when the total score crosses a threat threshold but no individual signal behind it is, on its own, strong enough to justify confidently asserting malice, SlopWatch reports `UNVERIFIED_HIGH_SIGNAL` instead of `SUSPICIOUS`/`MALICIOUS` — a Bayesian confidence gate (per-rule HIGH/MEDIUM/LOW likelihood ratios) rather than treating every fired signal as equally damning. Real signal, not confirmed; worth a human look, not a false alarm.
 
 ### ❌ What SlopWatch IS NOT:
+* **Not a code-quality or "AI slop" linter**: SlopWatch does not review the code you or your AI assistant write for stubbed functions, skipped tests, suppressed warnings, hollow implementations, or unmet claims. Its subject is the *dependency supply chain* — the third-party packages your project installs — not your own source tree.
 * **Not an omniscient hypervisor sandbox**: It performs zero dynamic code execution. It will not execute code in a VM or kernel sandbox to observe runtime behavior.
 * **Not a binary decompiler**: If an attacker embeds compiled machine code inside a native `.so`, `.dylib`, or `.node` file, SlopWatch flags the presence of unexpected native binaries (`BUNDLED_NATIVE_BINARY`), but it does not reverse-engineer the compiled C/Rust assembly.
 * **Not a silver bullet**: Static analysis is inherently an adversarial cat-and-mouse game. High-entropy custom runtime encoders or multi-stage split downloaders can be designed to evade static regex. SlopWatch catches the bulk of automated supply chain attacks instantly without the latency, cost, or prompt-injection vulnerabilities of LLMs.

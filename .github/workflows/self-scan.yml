@@ -1,0 +1,37 @@
+name: SlopWatch Self-Scan
+
+# SlopWatch audits its own dependency supply chain on every push and PR.
+# The badge for this workflow is a live credibility signal and a regression
+# canary: if SlopWatch's own heuristics start misfiring on ordinary,
+# well-established dependencies, this job goes red.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  self-scan:
+    name: SlopWatch scans its own supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install SlopWatch (editable)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: 🛡️ SlopWatch check (self)
+        run: slopwatch check . --stats

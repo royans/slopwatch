@@ -193,10 +193,25 @@ def _discover_manifests(target_path: Path) -> List[Path]:
 @cli.command("check")
 @click.argument("target", type=click.Path(exists=True), default=".", required=False)
 @click.option("--offline", is_flag=True, default=False, help="Disable live registry verification; run offline heuristics only.")
+@click.option("--ignore", "ignore_tokens", multiple=True, metavar="CODE", help="Demote a finding code (e.g. SLOP-0003) from breaking to advisory. Repeatable.")
+@click.option("--stats", "show_stats", is_flag=True, help="Print run statistics (manifests, registry calls, wall time).")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON format.")
-def check_cmd(target: str, offline: bool, json_output: bool):
+def check_cmd(target: str, offline: bool, ignore_tokens: tuple, show_stats: bool, json_output: bool):
     """📋 Automatically discover and audit project manifests for hallucinated dependencies."""
+    import time as _time
+    from slopwatch.core.finding_catalog import resolve_ignore_token
+
+    ignore_codes = set()
+    unknown_ignores = []
+    for tok in ignore_tokens:
+        resolved = resolve_ignore_token(tok)
+        if resolved:
+            ignore_codes.add(resolved)
+        else:
+            unknown_ignores.append(tok)
+
     async def _run():
+        _t0 = _time.monotonic()
         root_path = Path(target).resolve()
         manifests = _discover_manifests(root_path)
 
@@ -246,42 +261,40 @@ def check_cmd(target: str, offline: bool, json_output: bool):
 
         total_scanned = 0
         all_flagged: List[Dict[str, Any]] = []
+        all_suppressed: List[Dict[str, Any]] = []
         manifest_summaries: List[Tuple[str, int, int]] = []
         linter_inst: Optional[DependencyLinter] = None
+
+        def _absorb(res, rel_name):
+            nonlocal total_scanned
+            total_scanned += res.get("total_dependencies", 0)
+            manifest_summaries.append((rel_name, res.get("total_dependencies", 0), res.get("flagged_count", 0)))
+            for item in res.get("flagged_dependencies", []):
+                item["manifest"] = rel_name
+                all_flagged.append(item)
+            for item in res.get("suppressed_dependencies", []):
+                item["manifest"] = rel_name
+                all_suppressed.append(item)
 
         if db:
             async with db.get_session() as session:
                 repo = SentinelRepository(session)
-                linter_inst = DependencyLinter(repository=repo, offline=offline)
+                linter_inst = DependencyLinter(repository=repo, offline=offline, ignore_codes=ignore_codes)
                 for m in manifests:
                     try:
                         rel_name = str(m.relative_to(root_path))
                     except Exception:
                         rel_name = m.name
-                    res = await linter_inst.audit_file(m)
-                    t = res.get("total_dependencies", 0)
-                    f = res.get("flagged_count", 0)
-                    total_scanned += t
-                    manifest_summaries.append((rel_name, t, f))
-                    for item in res.get("flagged_dependencies", []):
-                        item["manifest"] = rel_name
-                        all_flagged.append(item)
+                    _absorb(await linter_inst.audit_file(m), rel_name)
             await db.close()
         else:
-            linter_inst = DependencyLinter(repository=None, offline=offline)
+            linter_inst = DependencyLinter(repository=None, offline=offline, ignore_codes=ignore_codes)
             for m in manifests:
                 try:
                     rel_name = str(m.relative_to(root_path))
                 except Exception:
                     rel_name = m.name
-                res = await linter_inst.audit_file(m)
-                t = res.get("total_dependencies", 0)
-                f = res.get("flagged_count", 0)
-                total_scanned += t
-                manifest_summaries.append((rel_name, t, f))
-                for item in res.get("flagged_dependencies", []):
-                    item["manifest"] = rel_name
-                    all_flagged.append(item)
+                _absorb(await linter_inst.audit_file(m), rel_name)
 
         fail_policy = linter_inst.config.get("fail_on", "HIGH") if linter_inst else "HIGH"
         min_score = linter_inst.config.get("min_threat_score", 50) if linter_inst else 50
@@ -294,6 +307,18 @@ def check_cmd(target: str, offline: bool, json_output: bool):
             or item.get("risk_weight", 0) >= min_score
         ]
 
+        stats = {
+            "manifests_audited": getattr(linter_inst, "manifests_audited", len(manifests)),
+            "dependencies_scanned": total_scanned,
+            "registry_calls": getattr(linter_inst, "registry_calls", 0),
+            "flagged": len(all_flagged),
+            "suppressed": len(all_suppressed),
+            "wall_time_seconds": round(_time.monotonic() - _t0, 3),
+        }
+
+        if unknown_ignores and not json_output:
+            console.print(f"[yellow]⚠️  Ignoring unrecognized --ignore token(s): {', '.join(unknown_ignores)}[/yellow]\n")
+
         if json_output:
             out = {
                 "target": str(root_path),
@@ -304,6 +329,11 @@ def check_cmd(target: str, offline: bool, json_output: bool):
                 "flagged_count": len(all_flagged),
                 "breached_dependencies": breached_items,
                 "flagged_dependencies": all_flagged,
+                "suppressed_count": len(all_suppressed),
+                "suppressions": all_suppressed,
+                "ignored_codes": sorted(getattr(linter_inst, "ignore_codes", ignore_codes)),
+                "unknown_ignore_tokens": unknown_ignores,
+                "stats": stats,
                 "manifest_summaries": [
                     {"manifest": m_name, "dependencies": deps_count, "flagged": flag_count}
                     for m_name, deps_count, flag_count in manifest_summaries
@@ -342,18 +372,46 @@ def check_cmd(target: str, offline: bool, json_output: bool):
                 table.add_column("Manifest", style="dim")
             table.add_column("Package", style="cyan")
             table.add_column("Version", style="magenta")
+            table.add_column("Code", style="dim")
             table.add_column("Severity", style="bold yellow")
             table.add_column("Reason", style="yellow")
             for item in all_flagged:
                 row = []
                 if len(manifests) > 1:
                     row.append(item.get("manifest", ""))
-                row.extend([item["package"], item["version"], item["severity"], item["reason"]])
+                row.extend([item["package"], item["version"], item.get("code", "-"), item["severity"], item["reason"]])
                 table.add_row(*row)
             console.print(table)
-            console.print("\n[dim]Note: SlopWatch uses deterministic heuristics that may flag benign stubs. Configure 'allowlist' in .slopwatch.yaml to permit approved packages.[/dim]")
-            if breached_items:
-                sys.exit(1)
+            console.print("\n[dim]Note: SlopWatch uses deterministic heuristics that may flag benign stubs. Configure 'allowlist' in .slopwatch.yaml to permit approved packages, or '--ignore <CODE>' to demote a specific finding.[/dim]")
+
+        if all_suppressed:
+            supp_table = Table(title="Suppressions (not counted against policy)")
+            supp_table.add_column("Package", style="cyan")
+            supp_table.add_column("Via", style="dim")
+            supp_table.add_column("Why", style="dim")
+            for item in all_suppressed:
+                via = item.get("kind", "?")
+                if item.get("code"):
+                    via = f"{via} ({item['code']})"
+                supp_table.add_row(str(item.get("package", "")), via, str(item.get("reason", "")))
+            console.print()
+            console.print(supp_table)
+
+        if show_stats:
+            stats_table = Table(title="Run Statistics", show_header=False, box=box.SIMPLE)
+            stats_table.add_column("Metric", style="cyan")
+            stats_table.add_column("Value", justify="right")
+            stats_table.add_row("Manifests audited", str(stats["manifests_audited"]))
+            stats_table.add_row("Dependencies scanned", str(stats["dependencies_scanned"]))
+            stats_table.add_row("Live registry calls", str(stats["registry_calls"]))
+            stats_table.add_row("Flagged", str(stats["flagged"]))
+            stats_table.add_row("Suppressed", str(stats["suppressed"]))
+            stats_table.add_row("Wall time (s)", f"{stats['wall_time_seconds']:.3f}")
+            console.print()
+            console.print(stats_table)
+
+        if breached_items:
+            sys.exit(1)
 
     asyncio.run(_run())
 
@@ -534,10 +592,18 @@ def init_cmd(force: bool):
 version: 1
 
 # Packages to whitelist (skips hallucination and typosquat checks)
-# Useful for internal private company libraries or approved VCS forks
+# Useful for internal private company libraries or approved VCS forks.
+# Entries may be a bare name, or carry a justification that is echoed in
+# the suppression ledger and --json output:
 allowlist:
   # - "my-internal-auth"
-  # - "company-private-sdk"
+  # - name: "company-private-sdk"
+  #   reason: "internal package on Artifactory; approved 2026-09 (SEC-412)"
+
+# Finding codes to demote from build-breaking to advisory (see docs/FINDINGS.md).
+# Suppressed findings still appear in output, listed in the suppression ledger.
+ignore:
+  # - "SLOP-0004"   # direct VCS / raw-URL dependencies
 
 # Failure & Alert Policy:
 #   - "CRITICAL": Exit 1 only on confirmed malware, reverse shells, or malicious install hooks (score >= 80)
@@ -630,6 +696,41 @@ jobs:
         except Exception:
             pass
 
+    # 4b. Agent Rules (AGENTS.md) — instruct autonomous coding agents to
+    #     verify a dependency with SlopWatch before adding it to a manifest.
+    agents_file = target_dir / "AGENTS.md"
+    agent_rules_block = """## Dependency safety (SlopWatch)
+
+Before adding, upgrading, or committing any third-party dependency
+(`requirements.txt`, `pyproject.toml`, `package.json`, lockfiles):
+
+1. Run `slopwatch check <manifest>` (or `slopwatch inspect <name> --ecosystem pypi|npm`).
+2. If the package is flagged as `UNREGISTERED_OR_HALLUCINATED_PACKAGE`,
+   `SUSPICIOUS_TYPOSQUAT_OF_*`, or `MATCHES_UNREGISTERED_SLOPSQUAT_WATCHLIST`,
+   do **not** add it — you have likely hallucinated the name. Find the real
+   package instead.
+3. Only add a dependency once `slopwatch check` passes, or a human has
+   explicitly approved it via the `allowlist` in `.slopwatch.yaml`.
+"""
+    if agents_file.exists() and not force:
+        try:
+            existing = agents_file.read_text(encoding="utf-8")
+        except Exception:
+            existing = ""
+        if "SlopWatch" in existing:
+            console.print("  [dim]• Agent rules present: AGENTS.md already references SlopWatch[/dim]")
+        else:
+            agents_file.write_text(existing.rstrip() + "\n\n" + agent_rules_block, encoding="utf-8")
+            console.print("  [bold green]✓[/bold green] Appended SlopWatch dependency rule to [bold cyan]AGENTS.md[/bold cyan]")
+    else:
+        agents_file.write_text(
+            "# Agent Instructions\n\n"
+            "Machine-readable guidance for autonomous coding agents working in this repo.\n\n"
+            + agent_rules_block,
+            encoding="utf-8",
+        )
+        console.print("  [bold green]✓[/bold green] Created agent ruleset: [bold cyan]AGENTS.md[/bold cyan] (pre-dependency SlopWatch check)")
+
     # 5. Baseline Audit of Discovered Manifests
     if discovered_manifests:
         console.print("\n[bold]3. Running Initial Baseline Manifest Audit:[/bold]")
@@ -662,6 +763,7 @@ jobs:
         "🎉 [bold green]SlopWatch Protection Active![/bold green]\n\n"
         "  • [bold]Pre-Commit[/bold]: Future `git commit` commands will automatically audit modified manifests.\n"
         "  • [bold]CI/CD Gate[/bold]: Pull requests will be audited automatically via GitHub Actions.\n"
+        "  • [bold]Agent Rules[/bold]: [cyan]AGENTS.md[/cyan] tells coding agents to run `slopwatch check` before adding a dependency.\n"
         "  • [bold]Customization[/bold]: Add private/internal packages to the `allowlist` in [cyan].slopwatch.yaml[/cyan].",
         style="green"
     ))

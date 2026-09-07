@@ -21,7 +21,8 @@ This command automatically:
 2. Generates a fully annotated `.slopwatch.yaml` configuration file.
 3. Installs a native Git pre-commit hook (`.git/hooks/pre-commit`).
 4. Generates a GitHub Actions workflow (`.github/workflows/slopwatch.yml`).
-5. Runs an initial baseline audit across all discovered manifests.
+5. Writes an `AGENTS.md` rule telling autonomous coding agents to run `slopwatch check` before adding a dependency (appended if the file already exists).
+6. Runs an initial baseline audit across all discovered manifests.
 
 ---
 
@@ -45,11 +46,21 @@ version: 1
 # 1. Package Allowlist (Whitelisting)
 # Packages listed here will NEVER be flagged for hallucination or typosquatting.
 # Useful for internal private packages, company SDKs, or approved direct VCS forks.
+# An entry may be a bare name, or a mapping carrying a justification that is
+# echoed in the suppression ledger and in --json output.
 allowlist:
   - "my-internal-company-sdk"
-  - "company-auth-token-helper"
   - "@company/private-client-v2"
   - "git+https://github.com/my-org/custom-fork.git"
+  - name: "company-auth-token-helper"
+    reason: "internal package on Artifactory; approved 2026-09 (SEC-412)"
+
+# 1b. Ignore specific finding codes (see docs/FINDINGS.md).
+# Demotes a finding from build-breaking to advisory. Suppressed findings are
+# NOT hidden — they appear in the run output under the suppression ledger and
+# in --json under "suppressions".
+ignore:
+  - "SLOP-0004"   # accept direct VCS / raw-URL dependencies in this repo
 
 # 2. Alert & Failure Policy (Exit Code Trigger)
 # Determines the minimum severity that causes `slopwatch check` or `audit` to fail CI (exit code 1).
@@ -92,6 +103,7 @@ allowlist = [
     "company-auth-token-helper",
     "git+https://github.com/my-org/custom-fork.git",
 ]
+ignore = ["SLOP-0004"]
 fail_on = "HIGH"
 min_threat_score = 50
 offline = false
@@ -146,8 +158,9 @@ score threshold a confirmed `MALICIOUS`/`SUSPICIOUS` result would. Whether
 that's the right default (vs. treating it as an advisory-only tier
 regardless of score) is an open question, not yet decided — if you want a
 softer default for now, add packages you've manually reviewed to
-`allowlist`, or use `--ignore <name>` on the CLI once available (tracked in
-the project roadmap and issue tracker).
+`allowlist`, or suppress the specific finding code with `--ignore SLOP-0001`
+(or an `ignore:` list in `.slopwatch.yaml`). See
+[FINDINGS.md](FINDINGS.md) for the finding-code catalog.
 
 ### Choosing Your `fail_on` Policy
 
@@ -170,8 +183,29 @@ CLI flags always take precedence over configuration file settings:
 | CLI Option | Description |
 | :--- | :--- |
 | `--offline` | Disables live HTTP registry validation; runs offline heuristics only. |
+| `--ignore CODE` | (`check`) Demotes a finding code (e.g. `SLOP-0003`) from build-breaking to advisory. Repeatable. Accepts a code or a full reason string. |
+| `--stats` | (`check`) Prints run statistics: manifests audited, dependencies scanned, live registry calls, and wall time. |
 | `--strict` | Enforces strict zero-warning mode on directory audits. |
 | `--force` | Overwrites existing configuration and hooks in `slopwatch init`. |
+
+### Suppression ledger
+
+Whenever a finding is suppressed — by `allowlist` or by `ignore` / `--ignore` —
+SlopWatch still reports it, listed separately from the flagged findings and
+never counted against the `fail_on` policy:
+
+```
+                Suppressions (not counted against policy)
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Package           ┃ Via                ┃ Why                          ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ company-auth-...  │ allowlist          │ approved 2026-09 (SEC-412)    │
+│ reqeusts          │ ignore (SLOP-0003) │ finding code in ignore list   │
+└───────────────────┴────────────────────┴──────────────────────────────┘
+```
+
+In `--json` output the same information is under `suppressions`, and every
+flagged finding carries its stable `code`.
 
 ---
 
@@ -180,6 +214,7 @@ CLI flags always take precedence over configuration file settings:
 If no configuration file is present, SlopWatch applies these defaults:
 
 * **`allowlist`**: Empty (`[]`)
+* **`ignore`**: Empty (`[]`) — no finding codes suppressed
 * **`fail_on`**: `"HIGH"` (fails on score $\ge 50$ or severity `HIGH`/`CRITICAL`)
 * **`min_threat_score`**: `50`
 * **`offline`**: `false` (validates upstream registries live)

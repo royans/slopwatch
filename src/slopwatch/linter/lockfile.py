@@ -54,11 +54,29 @@ _levenshtein = _damerau_levenshtein
 
 def _normalize_config_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
     allowlist = set()
+    allowlist_reasons: Dict[str, str] = {}
     raw_list = raw.get("allowlist", []) or raw.get("whitelist", []) or []
     for item in raw_list:
-        norm = re.sub(r"[-_.]+", "-", str(item)).lower()
+        # An entry may be a bare string, or a mapping carrying a justification:
+        #   allowlist:
+        #     - my-internal-sdk
+        #     - name: legacy-fork
+        #       reason: "approved 2026-09, tracked in SEC-412"
+        reason_text = ""
+        if isinstance(item, dict):
+            name = item.get("name") or item.get("package") or item.get("id") or ""
+            reason_text = str(item.get("reason") or item.get("justification") or "").strip()
+        else:
+            name = str(item)
+        if not name:
+            continue
+        norm = re.sub(r"[-_.]+", "-", str(name)).lower()
+        bare = str(name).strip().lower()
         allowlist.add(norm)
-        allowlist.add(str(item).strip().lower())
+        allowlist.add(bare)
+        if reason_text:
+            allowlist_reasons[norm] = reason_text
+            allowlist_reasons[bare] = reason_text
 
     fail_on = str(raw.get("fail_on", raw.get("alert_level", "HIGH"))).upper()
     if fail_on not in ("CRITICAL", "HIGH", "MEDIUM", "ANY"):
@@ -71,12 +89,18 @@ def _normalize_config_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         min_threat_score = default_scores.get(fail_on, 50)
 
+    ignore_raw = raw.get("ignore", []) or raw.get("ignore_codes", []) or []
+    if isinstance(ignore_raw, str):
+        ignore_raw = [ignore_raw]
+
     return {
         "allowlist": allowlist,
+        "allowlist_reasons": allowlist_reasons,
         "fail_on": fail_on,
         "min_threat_score": min_threat_score,
         "offline": bool(raw.get("offline", False)),
         "ignore_paths": list(raw.get("ignore_paths", []) or []),
+        "ignore": [str(t).strip() for t in ignore_raw if str(t).strip()],
     }
 
 
@@ -120,6 +144,7 @@ class DependencyLinter:
         session: Optional[aiohttp.ClientSession] = None,
         allowlist: Optional[Set[str]] = None,
         config: Optional[Dict[str, Any]] = None,
+        ignore_codes: Optional[Set[str]] = None,
     ):
         self.repository = repository
         self.config = config if config is not None else load_project_config()
@@ -133,6 +158,20 @@ class DependencyLinter:
                 self.allowlist.add(item.strip().lower())
         if self.config.get("allowlist"):
             self.allowlist.update(self.config["allowlist"])
+        self.allowlist_reasons: Dict[str, str] = dict(self.config.get("allowlist_reasons", {}) or {})
+
+        # Stable finding codes (SLOP-XXXX) to demote from breaking to advisory.
+        from slopwatch.core.finding_catalog import resolve_ignore_token
+
+        self.ignore_codes: Set[str] = set(ignore_codes or set())
+        for tok in self.config.get("ignore", []) or []:
+            resolved = resolve_ignore_token(tok)
+            if resolved:
+                self.ignore_codes.add(resolved)
+
+        # Lightweight run counters for `--stats`.
+        self.registry_calls = 0
+        self.manifests_audited = 0
 
     async def audit_file(self, file_path: Path) -> Dict[str, Any]:
         """Audit a dependency lockfile and identify dangerous or hallucinated packages."""
@@ -177,6 +216,7 @@ class DependencyLinter:
                 pass
 
         flagged_items = []
+        suppressed_items: List[Dict[str, Any]] = []
         to_verify_online: List[Tuple[str, str, str]] = []
 
         for raw_dep, version in dependencies:
@@ -184,6 +224,17 @@ class DependencyLinter:
 
             # Check: Project Allowlist (explicitly permitted internal or fork packages)
             if self.allowlist and (norm_dep in self.allowlist or raw_dep.lower() in self.allowlist):
+                suppressed_items.append({
+                    "package": raw_dep,
+                    "normalized": norm_dep,
+                    "version": version,
+                    "kind": "allowlist",
+                    "reason": (
+                        self.allowlist_reasons.get(norm_dep)
+                        or self.allowlist_reasons.get(raw_dep.lower())
+                        or "listed in project allowlist"
+                    ),
+                })
                 continue
 
             # Check 0: Direct VCS or unpinned URL dependency (bypasses registry audit)
@@ -256,12 +307,38 @@ class DependencyLinter:
                         "risk_weight": 85,
                     })
 
+        # Attach stable finding codes, then split off any codes the project
+        # has chosen to ignore into the suppression ledger.
+        from slopwatch.core.finding_catalog import code_for_reason
+
+        kept_items: List[Dict[str, Any]] = []
+        for item in flagged_items:
+            code = code_for_reason(item.get("reason"))
+            if code:
+                item["code"] = code
+            if code and code in self.ignore_codes:
+                suppressed_items.append({
+                    "package": item.get("package"),
+                    "normalized": item.get("normalized"),
+                    "version": item.get("version"),
+                    "kind": "ignore",
+                    "code": code,
+                    "reason": f"finding code {code} is in the project ignore list",
+                })
+            else:
+                kept_items.append(item)
+        flagged_items = kept_items
+
+        self.manifests_audited += 1
+
         return {
             "target_file": str(path),
             "ecosystem": ecosystem.value,
             "total_dependencies": len(dependencies),
             "flagged_count": len(flagged_items),
             "flagged_dependencies": flagged_items,
+            "suppressed_count": len(suppressed_items),
+            "suppressed_dependencies": suppressed_items,
             "is_clean": len(flagged_items) == 0,
         }
 
@@ -277,6 +354,8 @@ class DependencyLinter:
         if session is None:
             session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4.0))
             own_session = True
+
+        self.registry_calls += len(items)
 
         async def check_one(raw: str, norm: str, ver: str):
             async with sem:

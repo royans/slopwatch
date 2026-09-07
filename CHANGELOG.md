@@ -9,7 +9,37 @@ logic and verdicts.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Stable finding codes** (`slopwatch.core.finding_catalog`): every finding the
+  manifest gate (`check` / `audit`) can raise now carries a stable `SLOP-XXXX`
+  identifier, shown in the `check` table and in `--json`, and catalogued in
+  `docs/FINDINGS.md`. Codes never change meaning or get reused.
+- **Finding-code suppression** — `check --ignore SLOP-0003` (repeatable; accepts
+  a code or a full reason string) and an `ignore:` list in `.slopwatch.yaml` /
+  `[tool.slopwatch]`. Demotes a finding from build-breaking to advisory, giving
+  a per-finding answer to the open "should `UNVERIFIED_HIGH_SIGNAL` fail CI?"
+  question instead of a global policy change.
+- **Suppression ledger**: allowlisted and ignored findings are no longer
+  silently dropped — every run lists what was suppressed and why (a
+  "Suppressions" table in text output, `suppressions` in `--json`). `allowlist`
+  entries may now be a mapping carrying a `reason:` justification that is echoed
+  in the ledger.
+- **`check --stats`**: prints manifests audited, dependencies scanned, live
+  registry calls, and wall time (also under `stats` in `--json`).
+- **`init` writes `AGENTS.md`**: a pre-dependency `slopwatch check` rule for
+  autonomous coding agents — created if absent, appended if the file already
+  exists and does not mention SlopWatch.
+- **Self-scan CI workflow** (`.github/workflows/self-scan.yml`) and README
+  badge: SlopWatch audits its own dependency supply chain on every push and PR,
+  as a credibility signal and a heuristic-regression canary.
+
+### Changed
+
+- **README**: sharpened the scope statement — SlopWatch's subject is the
+  dependency supply chain (package names, lockfiles, upstream archives), not the
+  user's own source tree; added an explicit "not a code-quality / AI-slop
+  linter" boundary.
 
 ## [0.2.0] — 2026-09-06
 
