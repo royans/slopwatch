@@ -233,7 +233,7 @@ class SetupASTVisitor(ast.NodeVisitor):
 
     def _is_maintainer_cli_guard(self, test_node: ast.AST) -> bool:
         """Check if an if-condition is guarding maintainer actions (e.g. `if sys.argv[-1] == 'publish':`)."""
-        target_words = {"publish", "upload", "register", "tag", "release", "pypitest", "twine"}
+        target_words = {"publish", "upload", "register", "tag", "release", "pypitest", "twine", "test"}
         has_sys_argv = False
         has_target_word = False
         for sub in ast.walk(test_node):

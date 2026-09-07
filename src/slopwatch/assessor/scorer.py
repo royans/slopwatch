@@ -266,7 +266,7 @@ def has_confirmed_dangerous_execution(flags: List[str]) -> bool:
     3. Exfiltration destination co-located in the same source file with credential or
        environment harvesting.
     """
-    if any(f.startswith(CONFIRMED_DANGEROUS_FLAG_PREFIXES) for f in flags):
+    if any(f.startswith(CONFIRMED_DANGEROUS_FLAG_PREFIXES) and "Custom Install Hook" not in f for f in flags):
         return True
 
     # CROSS_ECOSYSTEM_WORM_PROPAGATION: only trust it when the SPECIFIC rule
@@ -989,7 +989,7 @@ class ProgressiveThreatEvaluator:
                 kind_points: Dict[str, int] = {}
                 for f in ast_report.flags:
                     is_stealer = "CONFIRMED_STEALER" in f
-                    is_crit = f.startswith(CONFIRMED_DANGEROUS_FLAG_PREFIXES) or "REVERSE_SHELL" in f
+                    is_crit = (f.startswith(CONFIRMED_DANGEROUS_FLAG_PREFIXES) and "Custom Install Hook" not in f) or "REVERSE_SHELL" in f
                     is_suspicious_hook = "INSTALL_TIME" in f or "LIFECYCLE" in f
                     flag_prefix = f.split(":")[0].strip() if ":" in f else f[:30]
 

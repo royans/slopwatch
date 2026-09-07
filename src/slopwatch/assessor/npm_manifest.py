@@ -46,6 +46,15 @@ def analyze_npm_package_manifest(manifest_data: Dict[str, Any], package_name: st
     for hook in dangerous_hooks:
         cmd = scripts.get(hook)
         if cmd:
+            is_version_preflight = (
+                ("node -e" in cmd or "node --eval" in cmd)
+                and ("process.versions" in cmd or "process.version" in cmd)
+                and ("console.error" in cmd or "console.log" in cmd)
+                and ("process.exit" in cmd)
+            )
+            if is_version_preflight:
+                continue
+
             has_lifecycle = True
             flags.append(f"LIFECYCLE_SCRIPT: '{hook}' -> '{cmd}'")
             threat_score += 25  # Unnecessary install hook in utility library
