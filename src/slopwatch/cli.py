@@ -473,6 +473,12 @@ def inspect_cmd(package_name: str, ecosystem: str, show_details: bool, json_outp
             else f"https://www.npmjs.com/package/{norm_name}"
         )
 
+        from slopwatch.matrix.decompose import decompose_package_name, publisher_matches_brand
+        decomp = decompose_package_name(norm_name, eco)
+        publisher_brand_match = (
+            publisher_matches_brand(decomp.entity, meta.author_email) if decomp else None
+        )
+
         if json_output:
             out = {
                 "package": norm_name,
@@ -488,6 +494,9 @@ def inspect_cmd(package_name: str, ecosystem: str, show_details: bool, json_outp
                 "domain_trust_score": domain_rep.trust_score if domain_rep else None,
                 "has_provenance": getattr(meta, "has_provenance", False),
                 "provenance_type": getattr(meta, "provenance_type", None),
+                "naming_template": decomp.template if decomp else None,
+                "naming_brand": decomp.entity if (decomp and decomp.is_high_value_brand) else None,
+                "publisher_affiliated_with_brand": publisher_brand_match,
                 "first_published_at": first_pub.isoformat() if first_pub else None,
                 "days_since_publish": days_since_publish,
                 "monthly_downloads": meta.monthly_downloads,
@@ -548,6 +557,17 @@ def inspect_cmd(package_name: str, ecosystem: str, show_details: bool, json_outp
                       f"{report.total_source_files:,} files  [dim]({report.code_size_tier})[/dim]")
         console.print(f"[bold]Provenance:[/bold] {prov}")
         console.print(f"[bold]Registry:[/bold]   {registry_url}")
+
+        # The naming-template signal is noise for a hugely-adopted or
+        # cryptographically-signed package (e.g. the real `langchain-community`),
+        # so gate the human-facing line on it being a plausible slopsquat.
+        _established = meta.monthly_downloads >= 100_000 or getattr(meta, "has_provenance", False)
+        if decomp and decomp.is_high_value_brand and not _established:
+            console.print(f"[bold]Naming:[/bold]     brand-anchored on [yellow]{decomp.entity.upper()}[/yellow]  [dim]· fits template {decomp.template}[/dim]")
+            if publisher_brand_match is True:
+                console.print(f"[bold]Vendor:[/bold]     [green]✓ publisher domain is an official {decomp.entity.upper()} account[/green]")
+            elif publisher_brand_match is False:
+                console.print(f"[bold]Vendor:[/bold]     [red]✗ publisher is NOT an official {decomp.entity.upper()} account[/red] [dim](author_email is self-asserted)[/dim]")
 
         # ---- Findings: grouped, severity-ranked counts by default; full list
         #      with --details. The verdict panel prints LAST so it stays on
