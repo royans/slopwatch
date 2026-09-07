@@ -1,6 +1,7 @@
 """Unit tests verifying public slopwatch package exports, API usability, and CLI."""
 
 import tempfile
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from click.testing import CliRunner
 
@@ -30,7 +31,9 @@ def test_slopwatch_exports():
     assert Ecosystem is not None
     assert ThreatVerdict is not None
     assert SquatDetection is not None
-    assert slopwatch.__version__ == "0.1.0"
+    # Version is single-sourced from package metadata (pyproject.toml), not a literal.
+    assert slopwatch.__version__ == _pkg_version("slopwatch")
+    assert slopwatch.__version__[0].isdigit()
 
 
 def test_slopwatch_submodule_aliasing():

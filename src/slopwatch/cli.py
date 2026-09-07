@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 
+from slopwatch import __version__
 from slopwatch.core.dto import Ecosystem, ThreatVerdict
 from slopwatch.core.config import Settings, AssessorConfig
 from slopwatch.assessor.yara_engine import YaraPatternScanner
@@ -27,7 +28,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="slopwatch")
+@click.version_option(version=__version__, prog_name="slopwatch")
 def cli():
     """🛡️ SlopWatch: Deterministic Zero-LLM AI Package Hallucination & Supply Chain Threat Auditor."""
     pass
@@ -36,7 +37,7 @@ def cli():
 @cli.command("info")
 def info_cmd():
     """ℹ️ Display SlopWatch threat engine status, loaded YARA rules, and signatures."""
-    console.print(Panel("🛡️ [bold cyan]SlopWatch Threat Engine[/bold cyan] (v0.1.0)", style="cyan"))
+    console.print(Panel(f"🛡️ [bold cyan]SlopWatch Threat Engine[/bold cyan] (v{__version__})", style="cyan"))
     
     scanner = YaraPatternScanner()
     rule_count = len(list(scanner._compiled_rules)) if scanner._compiled_rules else 0

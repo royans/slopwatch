@@ -25,7 +25,22 @@ from slopwatch.assessor.python_ast import (
 )
 from slopwatch.assessor.scorer import ProgressiveThreatEvaluator
 
-__version__ = "0.1.0"
+# Fallback for running straight from a source tree with no install; kept in sync
+# with pyproject.toml by scripts/release.py. The installed metadata wins below.
+_FALLBACK_VERSION = "0.1.0"
+
+
+def _resolve_version() -> str:
+    """Single-source the version from installed package metadata (pyproject.toml)."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("slopwatch")
+    except PackageNotFoundError:
+        return _FALLBACK_VERSION
+
+
+__version__ = _resolve_version()
 
 _LAZY_EXPORTS = {
     "DatabaseManager": ("slopwatch.db.engine", "DatabaseManager"),

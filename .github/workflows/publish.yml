@@ -39,6 +39,17 @@ jobs:
           pip install pytest pytest-asyncio pytest-mock aioresponses build twine
           pip install -e .
 
+      - name: 🏷️ Verify release tag matches package version
+        if: ${{ github.event_name == 'release' }}
+        run: |
+          PKG_VERSION="$(python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          TAG="${GITHUB_REF_NAME}"
+          echo "package version: $PKG_VERSION | release tag: $TAG"
+          if [ "v$PKG_VERSION" != "$TAG" ]; then
+            echo "::error::release tag $TAG does not match pyproject version v$PKG_VERSION"
+            exit 1
+          fi
+
       - name: 🔒 Pre-Submit Leak Check
         run: |
           python scripts/presubmit.py

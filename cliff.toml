@@ -1,0 +1,57 @@
+# git-cliff configuration — generates CHANGELOG.md sections from Conventional Commits.
+# Docs: https://git-cliff.org/docs/configuration
+#
+# The default release flow curates CHANGELOG.md's [Unreleased] section by hand;
+# this config is for `scripts/release.py --cliff` (or ad-hoc use) when you'd
+# rather seed the section from commit messages:
+#   git cliff --unreleased --tag v0.3.0 --prepend CHANGELOG.md
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to SlopWatch are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+While the version is `0.x`, minor releases may include behavior changes to detection
+logic and verdicts.\n
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}\
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = true
+tag_pattern = "v[0-9]*"
+sort_commits = "oldest"
+
+commit_parsers = [
+    { message = "^feat", group = "Added" },
+    { message = "^fix", group = "Fixed" },
+    { message = "^perf", group = "Changed" },
+    { message = "^refactor", group = "Changed" },
+    { message = "^revert", group = "Changed" },
+    { message = "^docs", skip = true },
+    { message = "^test", skip = true },
+    { message = "^chore", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^build", skip = true },
+    { message = "^release", skip = true },
+    { message = "^sync", skip = true },
+]

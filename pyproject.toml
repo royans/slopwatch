@@ -60,6 +60,7 @@ dev = [
     "aioresponses>=0.7.6",
     "build>=1.0.0",
     "twine>=5.0.0",
+    "git-cliff>=2.0.0",
 ]
 
 [project.urls]
