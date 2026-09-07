@@ -129,7 +129,34 @@ slopwatch inspect <pkg> --details          # list every flagged file:line
 
 Prints a package-facts block (age, downloads, codebase size, provenance,
 brand-naming template) and a severity-ranked finding summary, verdict last.
-See [docs/EXAMPLES.md](docs/EXAMPLES.md) for real benign and malicious output.
+
+Real run against [`open-vllm`](https://pypi.org/project/open-vllm/) — a package squatting `vllm` that streams your `api_key` env var to a hardcoded VPS IP:
+
+```console
+$ slopwatch inspect open-vllm
+Package:    open-vllm  (pypi)  v1.0.2
+Author:     Unknown
+Homepage:   not declared
+Published:  81 day(s) ago  · 1 release(s)
+Downloads:  13/month · 2/week  (negligible)
+Codebase:   311 lines · 16.7 KB · 7 files  (MODERATE_CODEBASE)
+Provenance: none (unsigned release)
+Registry:   https://pypi.org/project/open-vllm/
+Naming:     brand-anchored on VLLM  · fits template python-vllm-open
+
+Findings: 4 flagged location(s) across 1 file(s)
+  HIGH      1  SOURCE_CODE_CONFIRMED_STEALER
+  LOW       2  SOURCE_CODE_ENV_VARS_ACCESS
+  LOW       1  EXFILTRATION_DESTINATION_DETECTED
+
+╭─────────────────────────────────────────────────────────────────╮
+│ Heuristic Verdict: MALICIOUS (Threat Score: 100/100)             │
+│ Static AST + YARA assessment. Heuristics may be imperfect;       │
+│ always inspect source code.                                      │
+╰─────────────────────────────────────────────────────────────────╯
+```
+
+`--details` lists every flagged file:line; `--json` emits the full report. See [docs/EXAMPLES.md](docs/EXAMPLES.md) for the source walkthrough and a benign contrast (`requests`).
 
 ### 3. Statically Scan Local Code or Directory
 Run the AST analyzer and YARA rule engine across any local Python or JavaScript file/directory:
