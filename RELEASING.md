@@ -25,21 +25,30 @@ then edit.)
 
 ## Cutting a release
 
+Replace `X.Y.Z` with the target version throughout.
+
 ```bash
+# 0. One-time: authenticate the GitHub CLI (step 3 needs it).
+gh auth status || gh auth login
+
 # 1. Local: bump, promote the changelog, verify, commit, tag — no network writes.
-python scripts/release.py 0.3.0
+python scripts/release.py X.Y.Z
 #    (pauses once so you can review CHANGELOG.md before it runs tests + build)
 
 # 2. Push the release commit and tag.
 git push origin main --tags
 
 # 3. Create the GitHub Release — this is what publishes to PyPI.
-python scripts/release.py --notes 0.3.0 > /tmp/v0.3.0-notes.md
-gh release create v0.3.0 --title "SlopWatch v0.3.0" --notes-file /tmp/v0.3.0-notes.md
+python scripts/release.py --notes X.Y.Z > /tmp/vX.Y.Z-notes.md
+gh release create vX.Y.Z --title "SlopWatch vX.Y.Z" --notes-file /tmp/vX.Y.Z-notes.md
 
-# 4. Watch it land.
-gh run watch --workflow publish.yml
+# 4. Watch the publish run land (gh run watch needs a run id, not a workflow name).
+gh run watch "$(gh run list --workflow=publish.yml -L1 --json databaseId -q '.[0].databaseId')"
 ```
+
+If `gh` is not available or not authenticated, create the release from the web UI
+instead: **github.com/royans/slopwatch/releases/new** → pick the `vX.Y.Z` tag →
+paste `/tmp/vX.Y.Z-notes.md` → Publish. Same effect (fires `publish.yml`).
 
 `scripts/release.py 0.3.0 --dry-run` shows the plan and runs only the preflight
 checks (clean tree, on `main`, synced with origin, tag not taken).
