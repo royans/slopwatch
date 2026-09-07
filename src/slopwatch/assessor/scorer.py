@@ -682,6 +682,15 @@ class ProgressiveThreatEvaluator:
                 and (domain_root in pkg_tokens or any(t.startswith(domain_root) or domain_root.startswith(t) for t in pkg_tokens if len(t) >= 4))
             )
 
+            from slopwatch.core.domain_trust import get_shared_domain_trust_engine
+            domain_trust_engine = get_shared_domain_trust_engine()
+            domain_rep = domain_trust_engine.get_domain_reputation(author_domain)
+            is_domain_trusted = bool(domain_rep and domain_rep.trust_score >= 0.7)
+            if is_domain_trusted and not is_trusted_vendor:
+                is_trusted_vendor = True
+                trusted_vendor_id = author_domain
+                trusted_matched_by = f"dynamic_domain_trust:{int(domain_rep.trust_score * 100)}%"
+
             if is_vendor_domain:
                 evidence_signals.append(
                     EvidenceSignal(
@@ -705,6 +714,22 @@ class ProgressiveThreatEvaluator:
                         rule_code="RULE_OFFICIAL_AUTHOR_DOMAIN" if "domain" in trusted_matched_by else "RULE_OFFICIAL_REPO_LINEAGE",
                         human_description=f"Package lineage verified as trusted vendor '{trusted_vendor_id}' via {trusted_matched_by}.",
                         metadata={"vendor": trusted_vendor_id, "matched_by": trusted_matched_by},
+                    )
+                )
+                accumulated_score = 0
+            elif is_domain_trusted:
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_DYNAMIC_DOMAIN_TRUST",
+                        category="VENDOR_AUTHENTICITY",
+                        severity="INFO",
+                        score_impact=-50,
+                        rule_code="RULE_DYNAMIC_DOMAIN_TRUST",
+                        human_description=(
+                            f"Publisher domain '@{author_domain}' verified with {int(domain_rep.trust_score * 100)}% dynamic trustworthiness "
+                            f"({domain_rep.package_count} package(s) over {domain_rep.span_days} days)."
+                        ),
+                        metadata={"domain": author_domain, "trust_score": domain_rep.trust_score},
                     )
                 )
                 accumulated_score = 0
@@ -1102,7 +1127,7 @@ class ProgressiveThreatEvaluator:
                     )
                 )
 
-            # ==================== 5c. TRUSTED VENDOR 50% SCORE DAMPENING ====================
+            # ==================== 5c. TRUSTED VENDOR & DYNAMIC DOMAIN TRUST SCORE DAMPENING ====================
             if is_trusted_vendor and accumulated_score > 0:
                 orig_score = accumulated_score
                 accumulated_score = max(0, int(accumulated_score * 0.5))
@@ -1120,6 +1145,33 @@ class ProgressiveThreatEvaluator:
                         metadata={
                             "vendor": trusted_vendor_id,
                             "matched_by": trusted_matched_by,
+                            "original_score": orig_score,
+                            "dampened_score": accumulated_score,
+                        },
+                    )
+                )
+            elif domain_rep and domain_rep.trust_score >= 0.2 and accumulated_score > 0:
+                orig_score = accumulated_score
+                discount_ratio = round(domain_rep.trust_score * 0.5, 3)
+                accumulated_score = max(0, int(accumulated_score * (1.0 - discount_ratio)))
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_DYNAMIC_DOMAIN_TRUST",
+                        category="VENDOR_AUTHENTICITY",
+                        severity="INFO",
+                        score_impact=accumulated_score - orig_score,
+                        rule_code="RULE_DYNAMIC_DOMAIN_TRUST",
+                        human_description=(
+                            f"Publisher domain '@{author_domain}' evaluated with {int(domain_rep.trust_score * 100)}% trustworthiness "
+                            f"({domain_rep.package_count} package(s) over {domain_rep.span_days} days). "
+                            f"Applied dynamic {int(discount_ratio * 100)}% threat score dampening ({orig_score} -> {accumulated_score})."
+                        ),
+                        metadata={
+                            "domain": author_domain,
+                            "trust_score": domain_rep.trust_score,
+                            "package_count": domain_rep.package_count,
+                            "span_days": domain_rep.span_days,
+                            "discount_ratio": discount_ratio,
                             "original_score": orig_score,
                             "dampened_score": accumulated_score,
                         },

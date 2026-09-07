@@ -269,6 +269,10 @@ _CATALOG_ENTRIES: List[SignalSpec] = [
           Severity.CRITICAL.value, default_score=50, is_code_execution=True, gates_malicious=True,
           ui_badge="🚨 Possible Vendor Hijack", ui_facet="has_potential_hijack",
           description="Critical weaponized payload detected on a package associated with a trusted vendor. High risk of account takeover or compromised release pipeline."),
+    _spec("SIGNAL_DYNAMIC_DOMAIN_TRUST", "Dynamic domain trustworthiness dampening", SignalCategory.PROVENANCE.value,
+          Severity.INFO.value, default_score=0, kind=FindingKind.OBSERVATION.value, ui_badge="🌐 Trusted Domain",
+          ui_facet="is_trusted_domain",
+          description="Author email domain demonstrated empirical publication volume and longevity; applied proportional threat score dampening."),
 
     # ---------- Package effort ----------
     _spec("SIGNAL_HIGH_DOCUMENTATION_EFFORT", "Rich documentation effort", SignalCategory.PACKAGE_EFFORT.value,

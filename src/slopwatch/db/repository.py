@@ -9,7 +9,7 @@ import json
 import re
 import asyncio
 import logging
-from typing import List, Optional, Set, Tuple, Dict
+from typing import List, Optional, Set, Tuple, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy import select, update, delete, text, func
 from sqlalchemy.exc import OperationalError
@@ -1109,6 +1109,88 @@ class SlopWatchRepository:
         # This bulk UPDATE is the write most frequently observed colliding with
         # concurrent crawl / sync writes in production (see 'database is locked' failures) — retry with backoff.
         await self._write_with_retry(_do)
+
+    async def get_all_domain_reputations(self) -> Dict[str, Any]:
+        """
+        Aggregate detection records across database to build dynamic DomainReputation scores.
+        """
+        from slopwatch.core.domain_trust import DomainReputation, get_shared_domain_trust_engine
+        from slopwatch.core.normalizers import extract_clean_email_and_domain
+        from datetime import timezone
+
+        query = select(
+            SquatDetectionModel.package_name,
+            SquatDetectionModel.verdict,
+            SquatDetectionModel.published_at,
+            SquatDetectionModel.analysis_details_json,
+        )
+        result = await self.session.execute(query)
+        rows = result.all()
+
+        domain_data: Dict[str, Dict[str, Any]] = {}
+        for pkg_name, verdict, pub_at, details_raw in rows:
+            try:
+                details = json.loads(details_raw or "{}")
+            except Exception:
+                details = {}
+            raw_email = details.get("author_email")
+            clean_email, clean_domain = extract_clean_email_and_domain(raw_email)
+            if not clean_domain:
+                continue
+            clean_domain = clean_domain.lower().strip()
+
+            d_info = domain_data.setdefault(clean_domain, {
+                "packages": set(),
+                "dates": [],
+                "malicious_count": 0,
+                "suspicious_count": 0,
+            })
+            d_info["packages"].add(pkg_name)
+            if verdict == ThreatVerdict.MALICIOUS.value:
+                d_info["malicious_count"] += 1
+            elif verdict == ThreatVerdict.SUSPICIOUS.value:
+                d_info["suspicious_count"] += 1
+
+            dt_str = details.get("first_published_at") or details.get("published_at") or pub_at
+            if dt_str:
+                try:
+                    s = str(dt_str).replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(s)
+                    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+                    d_info["dates"].append(dt)
+                except Exception:
+                    pass
+
+        engine = get_shared_domain_trust_engine()
+        reputations: Dict[str, DomainReputation] = {}
+        for dom, info in domain_data.items():
+            dates = info["dates"]
+            first_pub = min(dates) if dates else None
+            latest_pub = max(dates) if dates else None
+            rep = engine.evaluate_domain(
+                domain=dom,
+                package_count=len(info["packages"]),
+                first_published_at=first_pub,
+                latest_published_at=latest_pub,
+                malicious_count=info["malicious_count"],
+                suspicious_count=info["suspicious_count"],
+            )
+            reputations[dom] = rep
+
+        return reputations
+
+    async def get_domain_reputation(self, domain: str) -> Optional[Any]:
+        """Get or compute dynamic reputation for a specific author domain."""
+        if not domain:
+            return None
+        from slopwatch.core.domain_trust import get_shared_domain_trust_engine
+        engine = get_shared_domain_trust_engine()
+        cached = engine.get_domain_reputation(domain)
+        if cached is not None:
+            return cached
+        # Populate all reputations on first miss
+        reps = await self.get_all_domain_reputations()
+        return reps.get(domain.lower().strip())
 
 
 
