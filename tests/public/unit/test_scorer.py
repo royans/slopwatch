@@ -1199,3 +1199,52 @@ async def test_generic_words_not_treated_as_high_value_brands():
     assert "safe" not in HIGH_VALUE_BRANDS
     assert "coinbase-base" in HIGH_VALUE_BRANDS
     assert "gnosis-safe" in HIGH_VALUE_BRANDS
+
+
+@pytest.mark.asyncio
+async def test_setup_py_publish_shortcut_not_flagged_as_install_execution():
+    """Maintainer publisher shortcuts (if sys.argv[-1] == 'publish') must not be flagged as install hooks."""
+    from slopwatch.assessor.python_ast import inspect_python_code_ast
+    setup_code = """
+import sys, os
+from setuptools import setup
+
+if sys.argv[-1] == 'publish':
+    os.system('python setup.py sdist bdist_wheel')
+    os.system('twine upload dist/*')
+    sys.exit()
+
+if sys.argv[-1] == 'tag':
+    os.system("git tag -a v1.0.0 -m 'v1.0.0'")
+    os.system("git push --tags")
+    sys.exit()
+
+setup(name='my-tool', version='1.0.0')
+"""
+    report = inspect_python_code_ast(setup_code, 'setup.py')
+    assert not report.has_os_system
+    assert not any('INSTALL_TIME_EXECUTION' in f for f in report.flags)
+
+
+def test_npm_preinstall_diagnostic_console_error_not_flagged():
+    """Console.error documentation or fallback instructions inside node -e checks are not droppers."""
+    from slopwatch.assessor.yara_engine import get_yara_scanner
+    scanner = get_yara_scanner()
+    manifest = '''{
+  "name": "akm-cli",
+  "scripts": {
+    "preinstall": "node -e \"if (node_v < 22) { console.error('Install via: curl -fsSL https://... | bash'); process.exit(1); }\""
+  }
+}'''
+    flags, details = scanner.scan_file_content(manifest, 'package.json')
+    assert not any('NPM Dangerous Lifecycle Hook' in d for _, d in details)
+
+
+def test_separate_file_credential_and_network_not_confirmed_malware():
+    """Cross-file static keyword matches without install hooks must not trigger confirmed weaponization."""
+    from slopwatch.assessor.scorer import has_confirmed_dangerous_execution
+    flags = [
+        "EXFILTRATION_DESTINATION_DETECTED: 'Raw Public IP' found in package/src/utils/env.ts:31",
+        "CREDENTIAL_PATH_HARVESTING: 'SSH Private Keys' found in package/src/tools/security.ts:1614",
+    ]
+    assert has_confirmed_dangerous_execution(flags) is False

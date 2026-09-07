@@ -302,9 +302,13 @@ def has_confirmed_dangerous_execution(flags: List[str]) -> bool:
     if is_install_time and (exfil_flags or cred_flags):
         return True
 
-    # Exfiltration destination combined with credential harvesting across the package
+    # Exfiltration destination combined with credential harvesting:
+    # Must either be during install-time, or co-located in the same source file.
     if exfil_flags and cred_flags:
-        return True
+        exfil_files = {_extract_flag_filename(f) for f in exfil_flags} - {None}
+        cred_files = {_extract_flag_filename(f) for f in cred_flags} - {None}
+        if is_install_time or (exfil_files & cred_files):
+            return True
 
     # If exfiltration destination and env harvesting occur in the SAME file, that
     # confirms intra-file secret exfiltration.

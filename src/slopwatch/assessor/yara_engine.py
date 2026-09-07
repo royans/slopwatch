@@ -253,6 +253,16 @@ class YaraPatternScanner:
                     if category in positions:
                         positions[category].append(offset)
 
+            if match.rule == "SupplyChain_NPM_Lifecycle_Command":
+                # Check if the matched command is merely diagnostic text inside console.error/console.log
+                matched_snippet = ""
+                for sm in match.strings:
+                    for inst in sm.instances:
+                        matched_snippet = inst.matched_data.decode("utf-8", errors="ignore")
+                        break
+                if "console.error" in matched_snippet or "console.log" in matched_snippet:
+                    continue
+
             if first_offset is not None:
                 lineno = content.count("\n", 0, first_offset) + 1
                 dedup_key = f"{prefix}:{label}"

@@ -229,11 +229,41 @@ class SetupASTVisitor(ast.NodeVisitor):
         self.has_cmdclass_override = False
         self.has_dynamic_obfuscation = False
         self.install_time_lines: Set[int] = set()
+        self.in_maintainer_guard = False
+
+    def _is_maintainer_cli_guard(self, test_node: ast.AST) -> bool:
+        """Check if an if-condition is guarding maintainer actions (e.g. `if sys.argv[-1] == 'publish':`)."""
+        target_words = {"publish", "upload", "register", "tag", "release", "pypitest", "twine"}
+        has_sys_argv = False
+        has_target_word = False
+        for sub in ast.walk(test_node):
+            if isinstance(sub, ast.Attribute) and sub.attr == "argv":
+                if isinstance(sub.value, ast.Name) and sub.value.id == "sys":
+                    has_sys_argv = True
+            elif isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                if any(w in sub.value.lower() for w in target_words):
+                    has_target_word = True
+        return has_sys_argv and has_target_word
+
+    def visit_If(self, node: ast.If):
+        is_guard = self.is_install_script and self.scope_depth == 0 and self._is_maintainer_cli_guard(node.test)
+        if is_guard:
+            prev_guard = getattr(self, "in_maintainer_guard", False)
+            self.in_maintainer_guard = True
+            for child in node.body:
+                self.visit(child)
+            self.in_maintainer_guard = prev_guard
+            for child in node.orelse:
+                self.visit(child)
+        else:
+            self.generic_visit(node)
+
 
     def generic_visit(self, node: ast.AST):
         if hasattr(node, "lineno") and self.is_install_script:
-            if self.scope_depth == 0 or self.current_class_name in self.custom_install_classes:
-                self.install_time_lines.add(node.lineno)
+            if not getattr(self, "in_maintainer_guard", False):
+                if self.scope_depth == 0 or self.current_class_name in self.custom_install_classes:
+                    self.install_time_lines.add(node.lineno)
         super().generic_visit(node)
 
 
@@ -441,7 +471,9 @@ class SetupASTVisitor(ast.NodeVisitor):
                     self.has_cmdclass_override = True
             elif self.scope_depth == 0 and self.is_install_script:
                 # Top-level install-time execution hook
-                if not (self._is_benign_exec(call_name, node) or self._is_benign_compiler_or_build_call(call_name, node)):
+                if getattr(self, "in_maintainer_guard", False):
+                    pass
+                elif not (self._is_benign_exec(call_name, node) or self._is_benign_compiler_or_build_call(call_name, node)):
                     self.top_level_calls.append((call_name, node.lineno))
                     self.has_os_system = True
                     if "eval" in call_name:
