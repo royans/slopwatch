@@ -1285,7 +1285,7 @@ class ProgressiveThreatEvaluator:
             has_confirmed_stealer_or_c2 = (
                 any("stealer" in f.lower() for f in ast_report.flags)
                 or any("reverse_shell" in f.lower() or "reverse shell" in f.lower() for f in ast_report.flags)
-                or any("socket" in f.lower() for f in ast_report.flags)
+                or any("install_time_network_socket" in f.lower() or "socket connection" in f.lower() for f in ast_report.flags)
                 or any("exfiltration" in f.lower() for f in ast_report.flags)
                 or any("c2" in f.lower() for f in ast_report.flags)
                 or any("worm" in f.lower() for f in ast_report.flags)

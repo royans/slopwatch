@@ -390,6 +390,7 @@ class SetupASTVisitor(ast.NodeVisitor):
             "git", "pkg-config", "which", "where", "ld", "llvm-config", "cargo",
             "rustc", "rm", "mv", "cp", "echo", "mkdir", "chmod", "flake8",
             "pytest", "twine", "rmdir", "touch",
+            "npm", "node", "yarn", "pnpm", "npx", "webpack", "esbuild", "rollup",
         }
         return first_cmd_base in benign_bins
 
