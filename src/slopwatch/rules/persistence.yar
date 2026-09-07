@@ -36,6 +36,7 @@ rule Persistence_Systemd_LaunchAgent {
         prefix = "SYSTEM_PERSISTENCE_TAMPERING"
         label = "Systemd / macOS LaunchAgent Persistence"
         category = "persistence"
+        confidence = "LOW"
         severity = 90
         description = "Creation or tampering of system services or user LaunchAgents"
     strings:
