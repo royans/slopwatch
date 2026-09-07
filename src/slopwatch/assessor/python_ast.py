@@ -358,11 +358,8 @@ class SetupASTVisitor(ast.NodeVisitor):
             if isinstance(elem0, ast.Constant) and isinstance(elem0.value, str):
                 first_cmd = elem0.value.strip().lower()
             elif isinstance(elem0, ast.Attribute) and elem0.attr == "executable":
-                if len(first_arg.elts) > 1:
-                    elem1 = first_arg.elts[1]
-                    if isinstance(elem1, ast.Constant) and isinstance(elem1.value, str):
-                        if elem1.value in ("-m", "setup.py"):
-                            return True
+                # sys.executable <build_script> in setup.py is standard Python packaging/codegen
+                return True
 
         if first_cmd:
             first_cmd_base = first_cmd.split("/")[-1].split("\\")[-1]
@@ -942,12 +939,14 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
     # using confidence math alone.
     install_hook_confirmed = (
         has_pth_execution
-        or any(f.startswith((
-            "INSTALL_TIME_EXECUTION",
-            "INSTALL_TIME_CMDCLASS_OVERRIDE",
-            "INSTALL_TIME_NETWORK_SOCKET",
-            "MODULE_TOPLEVEL_EXECUTION",
-        )) for f in all_flags)
+        or any(
+            (f.startswith("INSTALL_TIME_EXECUTION") and "Custom Install Hook" not in f)
+            or f.startswith((
+                "INSTALL_TIME_CMDCLASS_OVERRIDE",
+                "INSTALL_TIME_NETWORK_SOCKET",
+                "MODULE_TOPLEVEL_EXECUTION",
+            )) for f in all_flags
+        )
     )
     weaponized_source_confirmed = any(
         f.startswith((
