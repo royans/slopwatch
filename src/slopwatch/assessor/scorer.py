@@ -1352,6 +1352,8 @@ class ProgressiveThreatEvaluator:
                 and verdict in (ThreatVerdict.SUSPICIOUS, ThreatVerdict.MALICIOUS, ThreatVerdict.SQUATTED_STUB)
             )
 
+            final_score = min(1000, max(0, final_score))
+
             return SquatDetection(
                 candidate_id=candidate.candidate_id,
                 ecosystem=ecosystem,
