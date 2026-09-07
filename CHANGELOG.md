@@ -33,6 +33,9 @@ logic and verdicts.
 - **Self-scan CI workflow** (`.github/workflows/self-scan.yml`) and README
   badge: SlopWatch audits its own dependency supply chain on every push and PR,
   as a credibility signal and a heuristic-regression canary.
+- **`python -m slopwatch`** now works as an alias for the `slopwatch` console
+  script — handy when a `pip install --user` puts the script somewhere off
+  `PATH` (e.g. `~/.local/bin`).
 
 ### Changed
 
