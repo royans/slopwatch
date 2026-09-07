@@ -1248,3 +1248,38 @@ def test_separate_file_credential_and_network_not_confirmed_malware():
         "CREDENTIAL_PATH_HARVESTING: 'SSH Private Keys' found in package/src/tools/security.ts:1614",
     ]
     assert has_confirmed_dangerous_execution(flags) is False
+
+
+def test_setup_py_clean_and_build_compounds_not_flagged():
+    """Maintainer clean shortcuts and benign make/compiler chains in setup.py must not be flagged."""
+    from slopwatch.assessor.python_ast import inspect_python_code_ast
+    setup_code = """
+import sys, os
+from setuptools import setup
+
+if 'clean' in sys.argv:
+    os.system('cd external/lib && make clean && cd ../..')
+    os.system('if [ -d dist ]; then rm -rf dist; fi')
+    os.system('if [ -f my.egg-info ]; then rm my.egg-info; fi')
+
+setup(name='rsq-tool', version='1.0.0')
+"""
+    report = inspect_python_code_ast(setup_code, 'setup.py')
+    assert not report.has_os_system
+    assert not any('INSTALL_TIME_EXECUTION' in f for f in report.flags)
+
+
+def test_setup_py_exec_version_line_not_flagged():
+    """exec(version_line) single-sourcing pattern in setup.py must not be flagged as install execution."""
+    from slopwatch.assessor.python_ast import inspect_python_code_ast
+    setup_code = """
+import sys, os
+from setuptools import setup
+
+version_line = '__version__ = \'1.0.0\''
+exec(version_line)
+
+setup(name='langchain-serve', version=__version__)
+"""
+    report = inspect_python_code_ast(setup_code, 'setup.py')
+    assert not any('INSTALL_TIME_EXECUTION' in f for f in report.flags)

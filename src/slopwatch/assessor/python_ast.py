@@ -233,7 +233,7 @@ class SetupASTVisitor(ast.NodeVisitor):
 
     def _is_maintainer_cli_guard(self, test_node: ast.AST) -> bool:
         """Check if an if-condition is guarding maintainer actions (e.g. `if sys.argv[-1] == 'publish':`)."""
-        target_words = {"publish", "upload", "register", "tag", "release", "pypitest", "twine", "test"}
+        target_words = {"publish", "upload", "register", "tag", "release", "pypitest", "twine", "test", "clean", "build", "bdist", "sdist", "check"}
         has_sys_argv = False
         has_target_word = False
         for sub in ast.walk(test_node):
@@ -349,57 +349,96 @@ class SetupASTVisitor(ast.NodeVisitor):
 
     @staticmethod
     def _is_benign_exec(call_name: str, node: ast.Call) -> bool:
-        """True only for `exec(open(...).read())`-shaped calls — a discouraged
-        but real pattern (loading a generated/version file at import time).
-        Every other dangerous call name is never considered benign here."""
+        """True only for `exec(open(...).read())`-shaped calls or `exec(version_line)`
+        patterns used to single-source package versions in setup.py."""
         if call_name != "exec":
             return False
-        if node.args and isinstance(node.args[0], ast.Call):
+        if node.args:
             first_arg = node.args[0]
-            if isinstance(first_arg.func, ast.Name) and first_arg.func.id in ("open", "compile", "read"):
-                return True
-            if isinstance(first_arg.func, ast.Attribute) and first_arg.func.attr in ("read", "read_text"):
-                return True
+            if isinstance(first_arg, ast.Call):
+                if isinstance(first_arg.func, ast.Name) and first_arg.func.id in ("open", "compile", "read"):
+                    return True
+                if isinstance(first_arg.func, ast.Attribute) and first_arg.func.attr in ("read", "read_text"):
+                    return True
+            elif isinstance(first_arg, ast.Name):
+                name_lower = first_arg.id.lower()
+                if any(w in name_lower for w in ("version", "ver_", "__version__")):
+                    return True
         return False
 
     @staticmethod
-    def _is_benign_compiler_or_build_call(call_name: str, node: ast.Call) -> bool:
+    def _is_benign_single_cmd(cmd_part: str) -> bool:
+        cmd_part = cmd_part.strip()
+        if not cmd_part:
+            return True
+        parts = cmd_part.split()
+        if not parts:
+            return True
+        first_cmd = parts[0].lower().rstrip(";").rstrip("&&").rstrip("||")
+        if first_cmd == "cd":
+            return True
+        if first_cmd in ("python", "python3", "sys.executable"):
+            if len(parts) > 1 and parts[1] == "-m" and len(parts) > 2:
+                subcmd = parts[2].lower()
+                if subcmd in ("build", "pip", "flit", "setuptools", "wheel", "pybind11", "twine", "flake8"):
+                    return True
+            elif len(parts) > 1 and parts[1] in ("setup.py", "test"):
+                return True
+        first_cmd_base = first_cmd.split("/")[-1].split("\\")[-1]
+        benign_bins = {
+            "nvcc", "cmake", "make", "ninja", "gcc", "g++", "clang", "clang++",
+            "git", "pkg-config", "which", "where", "ld", "llvm-config", "cargo",
+            "rustc", "rm", "mv", "cp", "echo", "mkdir", "chmod", "flake8",
+            "pytest", "twine", "rmdir", "touch",
+        }
+        return first_cmd_base in benign_bins
+
+    @classmethod
+    def _is_benign_compiler_or_build_call(cls, call_name: str, node: ast.Call) -> bool:
         """True if os.system or subprocess.* call invokes known compiler / build / packaging tooling."""
         if call_name not in ("os.system", "os.popen", "subprocess.run", "subprocess.call", "subprocess.check_output", "subprocess.Popen"):
             return False
         if not node.args:
             return False
         first_arg = node.args[0]
-        first_cmd = None
+        cmd_str = None
         if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
             cmd_str = first_arg.value.strip()
-            parts = cmd_str.split()
-            if parts:
-                first_cmd = parts[0].lower().rstrip(";").rstrip("&&").rstrip("||")
-                if first_cmd in ("python", "python3", "sys.executable"):
-                    if len(parts) > 1 and parts[1] == "-m" and len(parts) > 2:
-                        subcmd = parts[2].lower()
-                        if subcmd in ("build", "pip", "flit", "setuptools", "wheel", "pybind11", "twine", "flake8"):
-                            return True
-                    elif len(parts) > 1 and parts[1] in ("setup.py", "test"):
-                        return True
+        elif isinstance(first_arg, ast.Call) and isinstance(first_arg.func, ast.Attribute) and first_arg.func.attr == "format":
+            if isinstance(first_arg.func.value, ast.Constant) and isinstance(first_arg.func.value.value, str):
+                cmd_str = first_arg.func.value.value.strip()
+        elif isinstance(first_arg, ast.JoinedStr):
+            parts_str = [p.value for p in first_arg.values if isinstance(p, ast.Constant) and isinstance(p.value, str)]
+            if parts_str:
+                cmd_str = " ".join(parts_str).strip()
         elif isinstance(first_arg, (ast.List, ast.Tuple)) and first_arg.elts:
             elem0 = first_arg.elts[0]
+            if isinstance(elem0, ast.Attribute) and elem0.attr == "executable":
+                return True
             if isinstance(elem0, ast.Constant) and isinstance(elem0.value, str):
-                first_cmd = elem0.value.strip().lower()
-            elif isinstance(elem0, ast.Attribute) and elem0.attr == "executable":
-                # sys.executable <build_script> in setup.py is standard Python packaging/codegen
-                return True
+                return cls._is_benign_single_cmd(elem0.value)
 
-        if first_cmd:
-            first_cmd_base = first_cmd.split("/")[-1].split("\\")[-1]
-            if first_cmd_base in (
-                "nvcc", "cmake", "make", "ninja", "gcc", "g++", "clang", "clang++",
-                "git", "pkg-config", "which", "where", "ld", "llvm-config", "cargo",
-                "rustc", "rm", "mv", "cp", "echo", "mkdir", "chmod", "flake8",
-                "pytest", "twine",
-            ):
-                return True
+        if cmd_str:
+            cleaned = cmd_str
+            if cleaned.startswith("if ") and "then " in cleaned:
+                then_part = cleaned.split("then ", 1)[1]
+                cleaned = then_part.rsplit("; fi", 1)[0].rsplit("fi", 1)[0]
+            import re
+            sub_cmds = re.split(r"&&|\|\||;|\n", cleaned)
+            has_meaningful_benign = False
+            for sub in sub_cmds:
+                sub = sub.strip()
+                if not sub:
+                    continue
+                parts = sub.split()
+                first_cmd = parts[0].lower() if parts else ""
+                if first_cmd == "cd":
+                    continue
+                if cls._is_benign_single_cmd(sub):
+                    has_meaningful_benign = True
+                else:
+                    return False
+            return has_meaningful_benign
         return False
 
     def visit_Call(self, node: ast.Call):
