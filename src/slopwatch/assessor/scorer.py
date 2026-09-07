@@ -693,11 +693,11 @@ class ProgressiveThreatEvaluator:
             if has_crypto_provenance:
                 effective_trust_score = max(0.85, min(1.0, effective_trust_score + 0.35))
 
-            is_domain_trusted = bool(effective_trust_score >= 0.7)
+            is_domain_trusted = bool(domain_rep and domain_rep.trust_score >= 0.7)
             if (is_domain_trusted or has_crypto_provenance) and not is_trusted_vendor:
                 is_trusted_vendor = True
                 trusted_vendor_id = author_domain or candidate.entity_token
-                trusted_matched_by = f"provenance:{provenance_type}" if has_crypto_provenance else f"dynamic_domain_trust:{int(effective_trust_score * 100)}%"
+                trusted_matched_by = f"provenance:{provenance_type}" if has_crypto_provenance else (f"dynamic_domain_trust:{int(domain_rep.trust_score * 100)}%" if domain_rep else "dynamic_domain_trust:0%")
 
             if has_crypto_provenance:
                 evidence_signals.append(
@@ -741,7 +741,7 @@ class ProgressiveThreatEvaluator:
                     )
                 )
                 accumulated_score = 0
-            elif is_domain_trusted:
+            elif is_domain_trusted and domain_rep:
                 evidence_signals.append(
                     EvidenceSignal(
                         signal_id="SIGNAL_DYNAMIC_DOMAIN_TRUST",
