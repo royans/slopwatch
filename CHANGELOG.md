@@ -48,6 +48,18 @@ logic and verdicts.
   user's own source tree; added an explicit "not a code-quality / AI-slop
   linter" boundary.
 
+### Changed
+
+- **`slopwatch inspect` output is now a short summary by default.** Instead of
+  printing every flagged file:line (hundreds of lines on a large package), it
+  shows a package-facts block (author, homepage, days since publish, month/week
+  downloads + usage tier, codebase size + tier, provenance, registry link) and a
+  severity-ranked **grouped count** of findings by category. The verdict panel
+  prints **last** so it's on screen without scrolling. `--details` / `-d` lists
+  every location; `--json` (now with `homepage`, `days_since_publish`,
+  `weekly_downloads`, `total_lines_of_code`, `code_size_tier`, `registry_url`, …)
+  is unchanged in spirit.
+
 ### Fixed
 
 - **`inspect` no longer shows a misleading "Publisher Domain … (Unindexed / New

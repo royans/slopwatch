@@ -7,7 +7,9 @@ Deterministic Zero-LLM Malware & Supply Chain Security Auditor for Python and Ja
 import asyncio
 import json
 import os
+import re
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
@@ -427,8 +429,9 @@ def check_cmd(target: str, offline: bool, ignore_tokens: tuple, show_stats: bool
 @cli.command("inspect")
 @click.argument("package_name")
 @click.option("--ecosystem", type=click.Choice(["pypi", "npm"]), default="pypi", help="Package ecosystem (default: pypi)")
+@click.option("-d", "--details", "show_details", is_flag=True, help="List every flagged file:line (default: a grouped count summary).")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON format.")
-def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
+def inspect_cmd(package_name: str, ecosystem: str, show_details: bool, json_output: bool):
     """📦 Perform deep static AST analysis on an upstream package release."""
     async def _run():
         eco = Ecosystem(ecosystem)
@@ -457,36 +460,18 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
         domain_rep = engine.get_domain_reputation(author_domain) if author_domain else None
 
         if not json_output:
-            console.print(f"Author: [magenta]{meta.author or 'Unknown'}[/magenta] | Latest Version: [green]{meta.latest_version}[/green]")
-            console.print(f"Description: {meta.description or 'None'}")
-
-            # NOTE: the "Publisher Authority & Provenance" panel (author-domain
-            # trustworthiness) is intentionally hidden here. The standalone CLI
-            # ships no domain-reputation index, so every domain read as
-            # "Unindexed / New domain" — misleading, and worse for a self-asserted
-            # metadata field that an impersonator can set to `cisco.com`. It
-            # returns once the reputation-snapshot feature lands
-            # (docs/internal/SLOPWATCH_SCORE_CONVERGENCE_DESIGN.md, Bucket D).
-            # Provenance and downloads are registry-sourced and reliable, so they
-            # stay — as plain lines, not an "authority" verdict.
-            if getattr(meta, "has_provenance", False):
-                ptype = getattr(meta, "provenance_type", "SLSA / Sigstore")
-                console.print(f"Build Provenance: [bold green]✓ Cryptographically Verified ({ptype})[/bold green]")
-            else:
-                console.print("Build Provenance: [dim]None (unsigned release)[/dim]")
-
-            if meta.monthly_downloads >= 100000:
-                console.print(f"Monthly Downloads: [bold green]{meta.monthly_downloads:,}[/bold green] [dim](High Adoption)[/dim]")
-            elif meta.monthly_downloads > 0:
-                console.print(f"Monthly Downloads: {meta.monthly_downloads:,}")
-            else:
-                console.print("Monthly Downloads: [dim]0 or unindexed[/dim]")
-
-            console.print("\n[cyan]Downloading payload and performing AST + YARA analysis...[/cyan]")
+            console.print("[cyan]Downloading release payload and running AST + YARA analysis...[/cyan]")
 
         report = await adapter.download_and_inspect_payload(norm_name, meta.latest_version)
 
         is_threat = report.verdict in (ThreatVerdict.MALICIOUS, ThreatVerdict.SUSPICIOUS, ThreatVerdict.UNVERIFIED_HIGH_SIGNAL)
+
+        first_pub = getattr(meta, "first_published_at", None) or getattr(meta, "published_at", None)
+        days_since_publish = (datetime.now(timezone.utc) - first_pub).days if first_pub else None
+        registry_url = (
+            f"https://pypi.org/project/{norm_name}/" if eco == Ecosystem.PYPI
+            else f"https://www.npmjs.com/package/{norm_name}"
+        )
 
         if json_output:
             out = {
@@ -495,13 +480,23 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
                 "version": meta.latest_version,
                 "author": meta.author,
                 "author_email": meta.author_email,
+                "homepage": meta.homepage,
+                "registry_url": registry_url,
                 "publisher_domain": author_domain,  # self-asserted registry metadata — not verified
                 # null (not 0.0) when the domain is not in a reputation index — the
                 # standalone CLI ships none yet. See SLOPWATCH_SCORE_CONVERGENCE_DESIGN.md.
                 "domain_trust_score": domain_rep.trust_score if domain_rep else None,
                 "has_provenance": getattr(meta, "has_provenance", False),
                 "provenance_type": getattr(meta, "provenance_type", None),
+                "first_published_at": first_pub.isoformat() if first_pub else None,
+                "days_since_publish": days_since_publish,
                 "monthly_downloads": meta.monthly_downloads,
+                "weekly_downloads": getattr(meta, "weekly_downloads", None),
+                "release_count": getattr(meta, "release_count", None),
+                "total_lines_of_code": report.total_lines_of_code,
+                "total_source_files": report.total_source_files,
+                "total_code_size_bytes": report.total_code_size_bytes,
+                "code_size_tier": report.code_size_tier,
                 "description": meta.description,
                 "verdict": report.verdict.value,
                 "threat_score": report.composite_threat_score,
@@ -519,20 +514,92 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
             else "cyan" if report.verdict == ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
             else "green"
         )
-        console.print(Panel(
-            f"Heuristic Verdict: [{verdict_color}]{report.verdict.value}[/{verdict_color}] (Threat Score: {report.composite_threat_score}/100)\n"
-            f"[dim]Static assessment based on AST code inspection and YARA threat rules. Heuristics may be imperfect; always inspect source code.[/dim]",
-            style=verdict_color
-        ))
+
+        # ---- Package facts (all from registry metadata + the AST report; no
+        #      domain-reputation index needed) ----
+        def _human_bytes(n: int) -> str:
+            size = float(n)
+            for unit in ("B", "KB", "MB", "GB"):
+                if size < 1024 or unit == "GB":
+                    return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+                size /= 1024
+            return f"{n} B"
+
+        dl_m, dl_w = meta.monthly_downloads, getattr(meta, "weekly_downloads", 0) or 0
+        dl_tier = (
+            "negligible" if dl_m < 100 else "low" if dl_m < 1000
+            else "moderate" if dl_m < 100_000 else "high adoption"
+        )
+        prov = (
+            f"[green]✓ verified ({getattr(meta, 'provenance_type', 'SLSA / Sigstore')})[/green]"
+            if getattr(meta, "has_provenance", False) else "[dim]none (unsigned release)[/dim]"
+        )
+
+        console.print()
+        console.print(f"[bold]Package:[/bold]    {norm_name}  [dim]({eco.value})[/dim]  v{meta.latest_version}")
+        console.print(f"[bold]Author:[/bold]     {meta.author or '[dim]Unknown[/dim]'}")
+        _homepage = meta.homepage if (meta.homepage and meta.homepage.rstrip("/") != registry_url.rstrip("/")) else None
+        console.print(f"[bold]Homepage:[/bold]   {_homepage or '[dim]not declared[/dim]'}")
+        if days_since_publish is not None:
+            console.print(f"[bold]Published:[/bold]  {days_since_publish} day(s) ago"
+                          + (f"  [dim]· {getattr(meta, 'release_count', 1)} release(s)[/dim]" if getattr(meta, "release_count", 0) else ""))
+        console.print(f"[bold]Downloads:[/bold]  {dl_m:,}/month · {dl_w:,}/week  [dim]({dl_tier})[/dim]")
+        console.print(f"[bold]Codebase:[/bold]   {report.total_lines_of_code:,} lines · {_human_bytes(report.total_code_size_bytes)} · "
+                      f"{report.total_source_files:,} files  [dim]({report.code_size_tier})[/dim]")
+        console.print(f"[bold]Provenance:[/bold] {prov}")
+        console.print(f"[bold]Registry:[/bold]   {registry_url}")
+
+        # ---- Findings: grouped, severity-ranked counts by default; full list
+        #      with --details. The verdict panel prints LAST so it stays on
+        #      screen without scrolling back past a long list. ----
+        def _flag_category(flag: str) -> str:
+            return (flag.split(":", 1)[0].strip() or "OTHER")
+
+        def _flag_path(flag: str) -> Optional[str]:
+            m = re.search(r" found in (\S+?):\d+", flag)
+            return m.group(1) if m else None
 
         if report.flags:
-            console.print("\n[bold red]🚨 Security Flags Detected:[/bold red]")
+            from slopwatch.core.confidence import flag_confidence
+            scanner = YaraPatternScanner()
+            _rank = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+            _label = {"HIGH": "[red]HIGH[/red]", "MEDIUM": "[yellow]MED [/yellow]", "LOW": "[dim]LOW [/dim]"}
+
+            cat_counts = Counter(_flag_category(f) for f in report.flags)
+            cat_conf = {}
             for f in report.flags:
-                console.print(f"  • {f}")
-        if report.line_details:
-            console.print("\n[bold yellow]Line Breakdown:[/bold yellow]")
-            for ld in report.line_details:
-                console.print(f"  • {ld}")
+                c = _flag_category(f)
+                if c not in cat_conf:
+                    cat_conf[c] = flag_confidence(f, scanner)
+            files = {p for f in report.flags for p in (_flag_path(f),) if p}
+            span = f" across {len(files)} file(s)" if files else ""
+
+            console.print(f"\n[bold]Findings:[/bold] {len(report.flags)} flagged location(s){span}")
+            for cat, n in sorted(cat_counts.items(), key=lambda kv: (_rank.get(cat_conf.get(kv[0], "MEDIUM"), 1), -kv[1])):
+                console.print(f"  {_label.get(cat_conf.get(cat, 'MEDIUM'), 'MED ')}  [yellow]{n:>5}[/yellow]  {cat}")
+
+            if show_details:
+                console.print("\n[bold red]🚨 Every flagged location:[/bold red]")
+                for f in report.flags:
+                    console.print(f"  • {f}")
+                if report.line_details:
+                    console.print("\n[bold yellow]Line Breakdown:[/bold yellow]")
+                    for ld in report.line_details:
+                        console.print(f"  • {ld}")
+            else:
+                eco_arg = f" --ecosystem {eco.value}" if eco.value != "pypi" else ""
+                console.print(
+                    f"\n[dim]Run [bold]slopwatch inspect {norm_name}{eco_arg} --details[/bold] "
+                    f"to list every location, or [bold]--json[/bold] for the full report.[/dim]"
+                )
+        else:
+            console.print("\n[green]No security flags detected in the package payload.[/green]")
+
+        console.print(Panel(
+            f"Heuristic Verdict: [{verdict_color}]{report.verdict.value}[/{verdict_color}] (Threat Score: {report.composite_threat_score}/100)\n"
+            f"[dim]Static AST + YARA assessment. Heuristics may be imperfect; always inspect source code.[/dim]",
+            style=verdict_color
+        ))
 
         if is_threat:
             sys.exit(1)
