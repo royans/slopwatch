@@ -124,7 +124,12 @@ Fetch and statically inspect any published PyPI or npm package without executing
 ```bash
 slopwatch inspect requests --ecosystem pypi
 slopwatch inspect express --ecosystem npm
+slopwatch inspect <pkg> --details          # list every flagged file:line
 ```
+
+Prints a package-facts block (age, downloads, codebase size, provenance,
+brand-naming template) and a severity-ranked finding summary, verdict last.
+See [docs/EXAMPLES.md](docs/EXAMPLES.md) for real benign and malicious output.
 
 ### 3. Statically Scan Local Code or Directory
 Run the AST analyzer and YARA rule engine across any local Python or JavaScript file/directory:
@@ -180,7 +185,7 @@ SlopWatch is zero-config by default, but supports fine-grained tuning via `.slop
 * **Finding-code suppression (`ignore` / `--ignore SLOP-XXXX`)**: Demote a specific finding from build-breaking to advisory. Suppressed findings stay visible in a per-run ledger — never silently dropped.
 * **Path Ignore Patterns (`ignore_paths`)**: Exclude test fixtures, mock data, or documentation.
 
-👉 **Read the complete [SlopWatch Configuration Guide](docs/CONFIGURATION.md)** for syntax examples, rubric tables, and CI/CD recipes, and the [Finding Code Catalog](docs/FINDINGS.md) for the stable `SLOP-XXXX` identifiers.
+👉 **Read the complete [SlopWatch Configuration Guide](docs/CONFIGURATION.md)** for syntax examples, rubric tables, and CI/CD recipes, the [Finding Code Catalog](docs/FINDINGS.md) for the stable `SLOP-XXXX` identifiers, and [Example Output](docs/EXAMPLES.md) for real benign vs. malicious `inspect` runs.
 
 ---
 

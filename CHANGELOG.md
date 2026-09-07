@@ -9,7 +9,12 @@ logic and verdicts.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`docs/EXAMPLES.md`**: real `slopwatch inspect` output for a benign library
+  (`requests`) and a malicious API-key-interception package squatting `vllm`
+  (`open-vllm`), plus a pointer to the confirmed-malware regression corpus.
+  Linked from the README.
 
 ## [0.3.0] — 2026-09-07
 
