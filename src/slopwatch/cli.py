@@ -249,11 +249,19 @@ def check_cmd(target: str, offline: bool, ignore_tokens: tuple, show_stats: bool
         repo = None
         db = None
         try:
-            from slopwatch.db.engine import DatabaseManager
-            from slopwatch.db.repository import SentinelRepository
             settings = Settings.load()
             db_path = settings.storage.database_url.replace("sqlite+aiosqlite:///", "")
             if Path(db_path).exists():
+                try:
+                    from slopwatch.db.engine import DatabaseManager
+                    from slopwatch.db.repository import SentinelRepository
+                except ImportError:
+                    if not json_output:
+                        console.print(
+                            "[dim]ℹ️  Found a local watchlist DB but the 'db' extra is not installed; "
+                            "continuing with registry checks only. Install with: pip install 'slopwatch\\[db]'[/dim]\n"
+                        )
+                    raise
                 db = DatabaseManager(database_url=settings.storage.database_url, wal_mode=settings.storage.wal_mode)
                 await db.init_db()
         except Exception:

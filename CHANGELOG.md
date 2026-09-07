@@ -36,10 +36,25 @@ logic and verdicts.
 
 ### Changed
 
+- **Slimmer install.** Core runtime dependencies dropped from 10 to 6
+  (`aiohttp`, `pydantic`, `pyyaml`, `rich`, `click`, `yara-python`) — a fresh
+  `pip install slopwatch` now pulls ~13 packages instead of ~22, and
+  `yara-python` is the only remaining compiled dependency.
 - **README**: sharpened the scope statement — SlopWatch's subject is the
   dependency supply chain (package names, lockfiles, upstream archives), not the
   user's own source tree; added an explicit "not a code-quality / AI-slop
   linter" boundary.
+
+### Removed
+
+- **`aiodns` and `dnspython`** as dependencies — neither was imported anywhere
+  in the package. Removing `aiodns` also drops the transitive `pycares` / `cffi`
+  / `pycparser` C-FFI chain. `aiohttp` falls back to its threaded resolver.
+- **`sqlalchemy[asyncio]` and `aiosqlite`** from the base install — the local
+  SQLite watchlist / registered-package cache used by `slopwatch check` is now
+  behind a `db` extra: `pip install "slopwatch[db]"`. The standalone CLI
+  (`check`, `inspect`, `scan`, `audit`, `info`, `init`) runs fully without it;
+  `check` prints a one-line hint if it finds a DB but the extra is missing.
 
 ## [0.2.0] — 2026-09-06
 

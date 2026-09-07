@@ -46,8 +46,11 @@ slopwatch audit .                  # inspect local manifests and source files
 Install directly via pip:
 
 ```bash
-pip install slopwatch
+pip install slopwatch          # core CLI — 6 runtime deps, no compiled toolchain beyond yara-python
+pip install "slopwatch[db]"    # optional: local SQLite watchlist / registered-package cache
 ```
+
+The core install is deliberately lean — `aiohttp`, `pydantic`, `pyyaml`, `rich`, `click`, `yara-python` — so a supply-chain scanner keeps its own supply chain small. The SQLite cache used by `slopwatch check` (when a `data/slopwatch.db` is present) lives behind the `[db]` extra.
 
 ### System Prerequisites
 

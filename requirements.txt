@@ -1,14 +1,25 @@
+# Development / CI environment for SlopWatch.
+#
+# End users do NOT need this file. Runtime deps are declared in pyproject.toml:
+#   pip install slopwatch          # core CLI (registry checks + offline heuristics)
+#   pip install "slopwatch[db]"    # + local SQLite watchlist / registered-package cache
+#
+# The list below is core + [db] + test tooling, for contributors and CI.
+
+# --- core runtime ---
 aiohttp>=3.9.0
-aiodns>=3.1.0
-aiosqlite>=0.19.0
-sqlalchemy[asyncio]>=2.0.0
-dnspython>=2.5.0
 pydantic>=2.5.0
 pyyaml>=6.0.0
 rich>=13.7.0
 click>=8.1.0
+yara-python>=4.5.0
+
+# --- [db] extra: local persistence used by `slopwatch check` when a DB is present ---
+sqlalchemy[asyncio]>=2.0.0
+aiosqlite>=0.19.0
+
+# --- test tooling ---
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 pytest-mock>=3.12.0
 aioresponses>=0.7.6
-yara-python>=4.5.0
