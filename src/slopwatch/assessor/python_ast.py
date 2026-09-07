@@ -332,6 +332,49 @@ class SetupASTVisitor(ast.NodeVisitor):
                 return True
         return False
 
+    @staticmethod
+    def _is_benign_compiler_or_build_call(call_name: str, node: ast.Call) -> bool:
+        """True if os.system or subprocess.* call invokes known compiler / build / packaging tooling."""
+        if call_name not in ("os.system", "os.popen", "subprocess.run", "subprocess.call", "subprocess.check_output", "subprocess.Popen"):
+            return False
+        if not node.args:
+            return False
+        first_arg = node.args[0]
+        first_cmd = None
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            cmd_str = first_arg.value.strip()
+            parts = cmd_str.split()
+            if parts:
+                first_cmd = parts[0].lower().rstrip(";").rstrip("&&").rstrip("||")
+                if first_cmd in ("python", "python3", "sys.executable"):
+                    if len(parts) > 1 and parts[1] == "-m" and len(parts) > 2:
+                        subcmd = parts[2].lower()
+                        if subcmd in ("build", "pip", "flit", "setuptools", "wheel", "pybind11", "twine", "flake8"):
+                            return True
+                    elif len(parts) > 1 and parts[1] in ("setup.py", "test"):
+                        return True
+        elif isinstance(first_arg, (ast.List, ast.Tuple)) and first_arg.elts:
+            elem0 = first_arg.elts[0]
+            if isinstance(elem0, ast.Constant) and isinstance(elem0.value, str):
+                first_cmd = elem0.value.strip().lower()
+            elif isinstance(elem0, ast.Attribute) and elem0.attr == "executable":
+                if len(first_arg.elts) > 1:
+                    elem1 = first_arg.elts[1]
+                    if isinstance(elem1, ast.Constant) and isinstance(elem1.value, str):
+                        if elem1.value in ("-m", "setup.py"):
+                            return True
+
+        if first_cmd:
+            first_cmd_base = first_cmd.split("/")[-1].split("\\")[-1]
+            if first_cmd_base in (
+                "nvcc", "cmake", "make", "ninja", "gcc", "g++", "clang", "clang++",
+                "git", "pkg-config", "which", "where", "ld", "llvm-config", "cargo",
+                "rustc", "rm", "mv", "cp", "echo", "mkdir", "chmod", "flake8",
+                "pytest", "twine",
+            ):
+                return True
+        return False
+
     def visit_Call(self, node: ast.Call):
         call_name = _get_dotted_name(node.func)
 
@@ -395,12 +438,13 @@ class SetupASTVisitor(ast.NodeVisitor):
             )
 
             if is_inside_custom_install and self.is_install_script:
-                self.cmdclass_override_calls.append((self.current_class_name, call_name, node.lineno))
-                self.has_os_system = True
-                self.has_cmdclass_override = True
+                if not (self._is_benign_exec(call_name, node) or self._is_benign_compiler_or_build_call(call_name, node)):
+                    self.cmdclass_override_calls.append((self.current_class_name, call_name, node.lineno))
+                    self.has_os_system = True
+                    self.has_cmdclass_override = True
             elif self.scope_depth == 0 and self.is_install_script:
                 # Top-level install-time execution hook
-                if not self._is_benign_exec(call_name, node):
+                if not (self._is_benign_exec(call_name, node) or self._is_benign_compiler_or_build_call(call_name, node)):
                     self.top_level_calls.append((call_name, node.lineno))
                     self.has_os_system = True
                     if "eval" in call_name:
@@ -417,7 +461,7 @@ class SetupASTVisitor(ast.NodeVisitor):
                 # sitting at the top of a confirmed-malicious package's
                 # `__init__.py` (dataset sample "automsg") scored BENIGN_COMMUNITY
                 # before this, because only setup.py's top level was ever scored.
-                if not self._is_benign_exec(call_name, node):
+                if not (self._is_benign_exec(call_name, node) or self._is_benign_compiler_or_build_call(call_name, node)):
                     self.module_toplevel_calls.append((call_name, node.lineno))
                     if "os.system" in call_name or "os.popen" in call_name:
                         self.has_os_system = True
@@ -718,9 +762,10 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                         max_score = max(max_score, p_score)
                 elif any(member.name.endswith(ext) for ext in NATIVE_BINARY_EXTENSIONS):
                     if not _is_test_or_fixture_path(member.name):
-                        all_flags.append(f"BUNDLED_NATIVE_BINARY: Unexpected compiled binary '{member.name}' in package archive")
-                        has_bundled_binary = True
-                        max_score = max(max_score, 25)
+                        if not has_bundled_binary:
+                            all_flags.append(f"BUNDLED_NATIVE_BINARY: Unexpected compiled binary '{member.name}' in package archive")
+                            has_bundled_binary = True
+                            max_score = max(max_score, 25)
 
                 if member.name.endswith(".py"):
                     if _is_test_or_fixture_path(member.name):
@@ -842,9 +887,10 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                                 or filename.endswith(".pyd")
                             )
                             if not is_standard_py_extension:
-                                all_flags.append(f"BUNDLED_NATIVE_BINARY: Unexpected compiled binary '{filename}' in wheel archive")
-                                has_bundled_binary = True
-                                max_score = max(max_score, 25)
+                                if not has_bundled_binary:
+                                    all_flags.append(f"BUNDLED_NATIVE_BINARY: Unexpected compiled binary '{filename}' in wheel archive")
+                                    has_bundled_binary = True
+                                    max_score = max(max_score, 25)
 
                     if filename.endswith(".py"):
                         if _is_test_or_fixture_path(filename):

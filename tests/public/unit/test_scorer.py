@@ -1123,3 +1123,79 @@ async def test_plugin_detector_failure_never_breaks_scoring(mocker):
         detection = await evaluator.evaluate_candidate(candidate)
     assert detection.verdict is not None
     assert "findings" in detection.analysis_details
+
+
+@pytest.mark.asyncio
+async def test_compiler_tools_in_setup_py_not_flagged_as_malicious(mocker):
+    """C/C++/CUDA compiler invocations (nvcc, make, cmake, git) in setup.py are benign."""
+    from slopwatch.assessor.python_ast import inspect_python_code_ast
+    setup_code = """
+import subprocess, os
+# Flash-attn / CosmoBolognaLib style compiler checks
+subprocess.run(["nvcc", "--version"], check=True)
+subprocess.run(["git", "submodule", "update", "--init"], check=True)
+os.system("make CAMB")
+os.system("python -m build")
+"""
+    report = inspect_python_code_ast(setup_code, "setup.py")
+    assert not any("INSTALL_TIME_EXECUTION" in f for f in report.flags)
+    assert not report.has_os_system
+
+
+@pytest.mark.asyncio
+async def test_established_high_download_package_clears_malicious_verdict(mocker):
+    from datetime import timedelta
+    """Packages with >= 10k monthly downloads and mature age must receive BENIGN_COMMUNITY unless confirmed stealer/C2."""
+    now = datetime.now(timezone.utc)
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.PYPI,
+        normalized_name="flash-attn",
+        entity_token="flash",
+        capability_token="attn",
+        framework_token="python",
+        risk_weight=50,
+    )
+    mock_meta = PackageMetadata(
+        ecosystem=Ecosystem.PYPI,
+        package_name="flash-attn",
+        latest_version="2.8.3",
+        author="Tri Dao",
+        author_email="tridao@cs.stanford.edu",
+        description="Fast and memory-efficient exact attention",
+        monthly_downloads=350000,
+        published_at=now - timedelta(days=1200),
+        first_published_at=now - timedelta(days=1200),
+    )
+    mock_ast = ASTSecurityReport(
+        total_source_files=150,
+        total_lines_of_code=85000,
+        total_code_size_bytes=4000000,
+        is_empty_stub=False,
+        code_size_tier="LARGE_CODEBASE",
+        flags=[
+            "SOURCE_CODE_ENV_VARS_ACCESS: os.environ accessed in csrc/op.py:10",
+            "SOURCE_CODE_DYNAMIC_EXECUTION: subprocess in csrc/build.py:20",
+        ],
+        composite_threat_score=15,
+        verdict=ThreatVerdict.BENIGN_COMMUNITY,
+    )
+    mock_adapter = mocker.MagicMock()
+    mock_adapter.inspect_package_metadata = AsyncMock(return_value=mock_meta)
+    mock_adapter.download_and_inspect_payload = AsyncMock(return_value=mock_ast)
+
+    with patch("slopwatch.adapters.get_adapter", return_value=mock_adapter):
+        detection = await evaluator.evaluate_candidate(candidate)
+
+    assert detection.verdict == ThreatVerdict.BENIGN_COMMUNITY
+    assert detection.threat_score <= 25
+
+
+@pytest.mark.asyncio
+async def test_generic_words_not_treated_as_high_value_brands():
+    """Generic words like 'base' or 'safe' must not trigger high-value brand impersonation."""
+    from slopwatch.assessor.scorer import HIGH_VALUE_BRANDS
+    assert "base" not in HIGH_VALUE_BRANDS
+    assert "safe" not in HIGH_VALUE_BRANDS
+    assert "coinbase-base" in HIGH_VALUE_BRANDS
+    assert "gnosis-safe" in HIGH_VALUE_BRANDS
