@@ -27,6 +27,15 @@ logic and verdicts.
   in the ledger.
 - **`check --stats`**: prints manifests audited, dependencies scanned, live
   registry calls, and wall time (also under `stats` in `--json`).
+- **Naming-template detection in `inspect`** (`slopwatch.matrix.decompose`):
+  when a package name is anchored on a known high-value brand token, `inspect`
+  shows the `{framework}-{entity}-{capability}` template it fits (e.g.
+  `fastcrest-tether` → `python-tether-fastcrest`, names brand `TETHER`) and
+  whether the publisher's `author_email` domain is an official account for that
+  brand. Stateless — uses the shipped brand tables. Suppressed for
+  hugely-adopted or provenance-signed packages to avoid crying wolf on
+  first-party packages like `langchain-community`. New `--json` fields:
+  `naming_template`, `naming_brand`, `publisher_affiliated_with_brand`.
 - **`init` writes `AGENTS.md`**: a pre-dependency `slopwatch check` rule for
   autonomous coding agents — created if absent, appended if the file already
   exists and does not mention SlopWatch.
@@ -42,35 +51,21 @@ logic and verdicts.
 - **Slimmer install.** Core runtime dependencies dropped from 10 to 6
   (`aiohttp`, `pydantic`, `pyyaml`, `rich`, `click`, `yara-python`) — a fresh
   `pip install slopwatch` now pulls ~13 packages instead of ~22, and
-  `yara-python` is the only remaining compiled dependency.
-- **README**: sharpened the scope statement — SlopWatch's subject is the
-  dependency supply chain (package names, lockfiles, upstream archives), not the
-  user's own source tree; added an explicit "not a code-quality / AI-slop
-  linter" boundary.
-
-### Added
-
-- **Naming-template detection in `inspect`** (`slopwatch.matrix.decompose`):
-  when a package name is anchored on a known high-value brand token, `inspect`
-  shows the `{framework}-{entity}-{capability}` template it fits (e.g.
-  `fastcrest-tether` → `python-tether-fastcrest`, names brand `TETHER`) and
-  whether the publisher's `author_email` domain is an official account for that
-  brand. Stateless — uses the shipped brand tables. Suppressed for
-  hugely-adopted or provenance-signed packages to avoid crying wolf on
-  first-party packages like `langchain-community`. New `--json` fields:
-  `naming_template`, `naming_brand`, `publisher_affiliated_with_brand`.
-
-### Changed
-
-- **`slopwatch inspect` output is now a short summary by default.** Instead of
+  `yara-python` is the only remaining compiled dependency. The local SQLite
+  watchlist cache moves behind a `db` extra (see Removed).
+- **`slopwatch inspect` output is a short summary by default.** Instead of
   printing every flagged file:line (hundreds of lines on a large package), it
   shows a package-facts block (author, homepage, days since publish, month/week
   downloads + usage tier, codebase size + tier, provenance, registry link,
   naming template) and a severity-ranked **grouped count** of findings by
   category. The verdict panel prints **last** so it's on screen without
-  scrolling. `--details` / `-d` lists every location; `--json` (now with
-  `homepage`, `days_since_publish`, `weekly_downloads`, `total_lines_of_code`,
-  `code_size_tier`, `registry_url`, …) is unchanged in spirit.
+  scrolling. `--details` / `-d` lists every location; `--json` gains `homepage`,
+  `days_since_publish`, `weekly_downloads`, `total_lines_of_code`,
+  `code_size_tier`, `registry_url`, and the naming-template fields above.
+- **README**: sharpened the scope statement — SlopWatch's subject is the
+  dependency supply chain (package names, lockfiles, upstream archives), not the
+  user's own source tree; added an explicit "not a code-quality / AI-slop
+  linter" boundary.
 
 ### Fixed
 
