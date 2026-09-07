@@ -147,7 +147,7 @@ that's the right default (vs. treating it as an advisory-only tier
 regardless of score) is an open question, not yet decided — if you want a
 softer default for now, add packages you've manually reviewed to
 `allowlist`, or use `--ignore <name>` on the CLI once available (tracked in
-`flagthis_sentinel`'s `docs/internal/malware_learning_and_fp_reduction_strategy.md`).
+the project roadmap and issue tracker).
 
 ### Choosing Your `fail_on` Policy
 
