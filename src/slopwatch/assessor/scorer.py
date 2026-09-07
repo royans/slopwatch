@@ -1293,7 +1293,10 @@ class ProgressiveThreatEvaluator:
                 or any("exfiltration" in f.lower() for f in ast_report.flags)
                 or any("c2" in f.lower() for f in ast_report.flags)
                 or any("worm" in f.lower() for f in ast_report.flags)
-                or any("backdoor" in f.lower() for f in ast_report.flags)
+                or (
+                    any("backdoor" in f.lower() for f in ast_report.flags)
+                    and has_install_time_code_execution(ast_report.flags)
+                )
                 or any("evasive_payload" in f.lower() for f in ast_report.flags)
                 or any("powershell" in f.lower() for f in ast_report.flags)
             )

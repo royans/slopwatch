@@ -384,6 +384,8 @@ class SetupASTVisitor(ast.NodeVisitor):
                     return True
             elif len(parts) > 1 and parts[1] in ("setup.py", "test"):
                 return True
+            elif len(parts) > 1 and parts[1] == "-c":
+                return True
         first_cmd_base = first_cmd.split("/")[-1].split("\\")[-1]
         benign_bins = {
             "nvcc", "cmake", "make", "ninja", "gcc", "g++", "clang", "clang++",
@@ -413,18 +415,36 @@ class SetupASTVisitor(ast.NodeVisitor):
             parts_str = [p.value for p in first_arg.values if isinstance(p, ast.Constant) and isinstance(p.value, str)]
             if parts_str:
                 cmd_str = " ".join(parts_str).strip()
+        elif isinstance(first_arg, ast.BinOp) and isinstance(first_arg.op, ast.Mod):
+            if isinstance(first_arg.left, ast.Constant) and isinstance(first_arg.left.value, str):
+                val = first_arg.left.value.strip()
+                if "%s" in val:
+                    cmd_str = val.replace("%s", "python", 1).strip()
+                else:
+                    cmd_str = val
         elif isinstance(first_arg, (ast.List, ast.Tuple)) and first_arg.elts:
             elem0 = first_arg.elts[0]
             if isinstance(elem0, ast.Attribute) and elem0.attr == "executable":
                 return True
             if isinstance(elem0, ast.Constant) and isinstance(elem0.value, str):
                 return cls._is_benign_single_cmd(elem0.value)
+            if isinstance(elem0, ast.Name):
+                args_strs = [
+                    elt.value.lower() for elt in first_arg.elts[1:]
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+                ]
+                if elem0.id.lower() in ("pip", "pip3", "python", "python3", "py", "executable"):
+                    return True
+                if any(action in args_strs for action in ("install", "build", "wheel", "setup.py")):
+                    return True
 
         if cmd_str:
             cleaned = cmd_str
             if cleaned.startswith("if ") and "then " in cleaned:
                 then_part = cleaned.split("then ", 1)[1]
                 cleaned = then_part.rsplit("; fi", 1)[0].rsplit("fi", 1)[0]
+            if cls._is_benign_single_cmd(cleaned):
+                return True
             import re
             sub_cmds = re.split(r"&&|\|\||;|\n", cleaned)
             has_meaningful_benign = False

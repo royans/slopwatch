@@ -139,9 +139,9 @@ rule Exfil_Hardcoded_GitHub_PAT {
 
 rule Exfil_TLS_Verification_Bypass {
     meta:
-        prefix = "EXFILTRATION_DESTINATION_DETECTED"
+        prefix = "ANTI_ANALYSIS_EVASION"
         label = "TLS / SSL Verification Bypass (Defense Evasion)"
-        category = "exfil"
+        category = "evasion"
         // Bad practice, but real legitimate uses exist: internal/self-signed
         // cert testing tooling, some enterprise proxy compatibility shims.
         confidence = "MEDIUM"

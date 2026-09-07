@@ -1292,3 +1292,46 @@ setuptools.setup(
 """
     report = inspect_python_code_ast(real_malware_shape, "setup.py")
     assert report.verdict == ThreatVerdict.MALICIOUS
+
+
+def test_pip_variable_in_post_install_command_is_benign():
+    setup_code = """
+from distutils.core import setup
+from setuptools.command.install import install
+import subprocess, sys
+
+class PostInstallCommand(install):
+    def run(self):
+        pip = "pip"
+        if "3" in sys.executable:
+            pip = "pip3"
+        subprocess.call([pip, 'install', 'csr_gcp_utils~=2.0', '--user'])
+        install.run(self)
+
+setup(name='csr-gcp-ha', version='3.1.0', cmdclass={'install': PostInstallCommand})
+"""
+    report = inspect_python_code_ast(setup_code, "setup.py")
+    assert not any("INSTALL_TIME_CMDCLASS_OVERRIDE" in f for f in report.flags)
+    assert not report.has_lifecycle_scripts
+
+
+def test_python_c_mod_formatting_introspection_is_benign():
+    setup_code = """
+import os, sys
+paths = os.popen("%s -c 'import kaa; print \"\\x00\".join(kaa.__path__)' 2>/dev/null" % sys.executable).readline()
+"""
+    report = inspect_python_code_ast(setup_code, "setup.py")
+    assert not any("INSTALL_TIME_EXECUTION" in f for f in report.flags)
+
+
+def test_tls_bypass_does_not_create_stealer():
+    code = """
+    import os, ssl
+    token = os.environ.get('AUTH_TOKEN')
+    ctx = ssl._create_unverified_context()
+    """
+    from slopwatch.assessor.yara_engine import YaraPatternScanner
+    scanner = YaraPatternScanner()
+    matches = scanner.scan_text(code, filename='test_agent.py')
+    flags = [m['rule'] for m in matches]
+    assert 'SOURCE_CODE_CONFIRMED_STEALER' not in flags
