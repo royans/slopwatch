@@ -294,7 +294,7 @@ def has_confirmed_dangerous_execution(flags: List[str]) -> bool:
     )) for f in flags)
 
     exfil_flags = [f for f in flags if f.startswith("EXFILTRATION_DESTINATION_DETECTED")]
-    cred_flags = [f for f in flags if f.startswith("CREDENTIAL_PATH_HARVESTING")]
+    cred_flags = [f for f in flags if f.startswith("CREDENTIAL_PATH_HARVESTING") and "IDE / AI Agent Configuration Hijacking" not in f]
     env_flags = [f for f in flags if f.startswith("SOURCE_CODE_ENV_VARS_ACCESS")]
 
     # In install hooks (setup.py root, lifecycle scripts, .pth), credential harvesting
@@ -589,9 +589,13 @@ class ProgressiveThreatEvaluator:
             accumulated_score = 0
 
             # ==================== 1. NAMING & AI GRAMMAR RUBRIC (+25 to +40 pts) ====================
+            is_eth_theme = (
+                candidate.entity_token.lower() == "eth"
+                and any(w in pkg_name.lower() for w in ("theme", "sphinx", "rtd", "zurich", "polytechnic"))
+            )
             is_known_brand = (
-                candidate.entity_token.lower() in HIGH_VALUE_BRANDS
-                or candidate.entity_token.lower() in VENDOR_DOMAINS
+                (candidate.entity_token.lower() in HIGH_VALUE_BRANDS or candidate.entity_token.lower() in VENDOR_DOMAINS)
+                and not is_eth_theme
             )
 
             if is_known_brand:
@@ -1295,8 +1299,10 @@ class ProgressiveThreatEvaluator:
             )
 
             is_established_community = (
-                (monthly_dl >= 10000 and days_dormant >= 180)
-                or (days_dormant >= 1000 and ast_report.total_lines_of_code >= 1000)
+                monthly_dl >= 50000
+                or (monthly_dl >= 5000 and days_dormant >= 90)
+                or (monthly_dl >= 10000 and days_dormant >= 180)
+                or (days_dormant >= 365 and ast_report.total_lines_of_code >= 1000)
             )
 
             if is_established_community and not has_confirmed_stealer_or_c2:

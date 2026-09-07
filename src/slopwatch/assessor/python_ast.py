@@ -391,6 +391,7 @@ class SetupASTVisitor(ast.NodeVisitor):
             "rustc", "rm", "mv", "cp", "echo", "mkdir", "chmod", "flake8",
             "pytest", "twine", "rmdir", "touch",
             "npm", "node", "yarn", "pnpm", "npx", "webpack", "esbuild", "rollup",
+            "pip", "pip3",
         }
         return first_cmd_base in benign_bins
 

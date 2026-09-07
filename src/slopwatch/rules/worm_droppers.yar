@@ -114,9 +114,9 @@ rule Dropper_Hidden_Payload_Unpack {
 
 rule Persistence_Implant {
     meta:
-        prefix = "CROSS_ECOSYSTEM_WORM_PROPAGATION"
+        prefix = "SYSTEM_PERSISTENCE_TAMPERING"
         label = "System Persistence Implant (systemd/cron/registry)"
-        category = "worm"
+        category = "persistence"
         // Confirmed false positive on real-world `agentdiscover`: a
         // legitimate security-scanning tool's own detection-signature
         // string (checking whether a THIRD-PARTY agent has installed a

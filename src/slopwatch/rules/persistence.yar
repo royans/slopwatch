@@ -23,8 +23,10 @@ rule Persistence_Shell_Profile_Modification {
         severity = 90
         description = "Attempts to append payloads to user shell profile startup scripts"
     strings:
-        $ = /(~|\$HOME|%USERPROFILE%|[A-Za-z]:\\Users\\[^\\]+)\/\.(bashrc|zshrc|profile|bash_profile|config\/fish\/config\.fish)/ ascii nocase
-        $ = /echo\s+['"].*['"]\s*>>\s*[\$\~A-Za-z0-9_\/.-]*\.(bashrc|zshrc|profile)/ ascii nocase
+        $append_redir = />>\s*[\$\~A-Za-z0-9_\/.-]*\.(bashrc|zshrc|profile|bash_profile|config\/fish\/config\.fish)/ ascii nocase
+        $append_tee   = /tee\s+-a\s+[\$\~A-Za-z0-9_\/.-]*\.(bashrc|zshrc|profile|bash_profile)/ ascii nocase
+        $append_fn    = /(appendFile|appendFileSync|writeFile|writeFileSync)\s*\([^)]*\.(bashrc|zshrc|profile|bash_profile)/ ascii nocase
+        $append_py    = /open\s*\([^)]*\.(bashrc|zshrc|profile|bash_profile)['"][^)]*['"][aw]/ ascii nocase
     condition:
         any of them
 }
