@@ -37,6 +37,18 @@ GENERIC_NON_CUSTOM_DOMAINS: Set[str] = frozenset(
         "temp.com",
         "<unknown>",
         "<missing>",
+        "email.com",
+        "mail.ru",
+        "googlegroups.com",
+        "yandex.ru",
+        "yandex.com",
+        "rambler.ru",
+        "163.com",
+        "126.com",
+        "sina.com",
+        "gmx.com",
+        "gmx.net",
+        "zoho.com",
     }
 )
 
@@ -55,6 +67,14 @@ class DomainReputation(BaseModel):
     trust_score: float = 0.0
     first_published_at: Optional[datetime] = None
     latest_published_at: Optional[datetime] = None
+
+    @property
+    def is_generic_esp(self) -> bool:
+        return not self.is_custom_domain
+
+    @property
+    def has_malware(self) -> bool:
+        return self.malicious_count > 0
 
 
 class DomainTrustEngine:
