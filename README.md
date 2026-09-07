@@ -153,7 +153,7 @@ Add SlopWatch to your project's `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/royans/slopwatch
-    rev: v0.1.0
+    rev: v0.2.0
     hooks:
       - id: slopwatch-check
       - id: slopwatch-audit

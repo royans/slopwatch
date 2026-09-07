@@ -9,6 +9,10 @@ logic and verdicts.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] — 2026-09-06
+
 ### Added
 
 - **`UNVERIFIED_HIGH_SIGNAL` verdict and detection-confidence framework**
@@ -61,5 +65,6 @@ security scanner for PyPI and npm packages, manifests, and lockfiles.
 - Brand-impersonation and phantom-squat detection.
 - CLI: `check`, `audit`, `inspect`, `scan`, `info`, `init`.
 
-[Unreleased]: https://github.com/royans/slopwatch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/royans/slopwatch/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/royans/slopwatch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/royans/slopwatch/releases/tag/v0.1.0

@@ -27,7 +27,7 @@ from slopwatch.assessor.scorer import ProgressiveThreatEvaluator
 
 # Fallback for running straight from a source tree with no install; kept in sync
 # with pyproject.toml by scripts/release.py. The installed metadata wins below.
-_FALLBACK_VERSION = "0.1.0"
+_FALLBACK_VERSION = "0.2.0"
 
 
 def _resolve_version() -> str:
