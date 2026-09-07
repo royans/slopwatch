@@ -459,38 +459,29 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
         if not json_output:
             console.print(f"Author: [magenta]{meta.author or 'Unknown'}[/magenta] | Latest Version: [green]{meta.latest_version}[/green]")
             console.print(f"Description: {meta.description or 'None'}")
-            
-            rep_table = Table(title="🏢 Publisher Authority & Provenance", box=box.ROUNDED, show_header=False)
-            rep_table.add_column("Property", style="bold cyan", width=24)
-            rep_table.add_column("Value", style="white")
 
-            if author_domain:
-                if domain_rep and domain_rep.trust_score >= 0.5:
-                    rep_table.add_row("Publisher Domain:", f"[bold green]{author_domain}[/bold green] (Trust: [bold green]{int(domain_rep.trust_score * 100)}%[/bold green])")
-                    rep_table.add_row("Publication History:", f"{domain_rep.package_count} package(s) over {domain_rep.span_days} days")
-                elif domain_rep and domain_rep.is_generic_esp:
-                    rep_table.add_row("Publisher Domain:", f"{author_domain} [yellow](Generic ESP / Public Email)[/yellow]")
-                elif domain_rep:
-                    rep_table.add_row("Publisher Domain:", f"{author_domain} (Trust: {int(domain_rep.trust_score * 100)}%)")
-                else:
-                    rep_table.add_row("Publisher Domain:", f"{author_domain} [dim](Unindexed / New domain)[/dim]")
-            else:
-                rep_table.add_row("Publisher Domain:", "[dim]Not declared[/dim]")
-
+            # NOTE: the "Publisher Authority & Provenance" panel (author-domain
+            # trustworthiness) is intentionally hidden here. The standalone CLI
+            # ships no domain-reputation index, so every domain read as
+            # "Unindexed / New domain" — misleading, and worse for a self-asserted
+            # metadata field that an impersonator can set to `cisco.com`. It
+            # returns once the reputation-snapshot feature lands
+            # (docs/internal/SLOPWATCH_SCORE_CONVERGENCE_DESIGN.md, Bucket D).
+            # Provenance and downloads are registry-sourced and reliable, so they
+            # stay — as plain lines, not an "authority" verdict.
             if getattr(meta, "has_provenance", False):
                 ptype = getattr(meta, "provenance_type", "SLSA / Sigstore")
-                rep_table.add_row("Build Provenance:", f"[bold green]✓ Cryptographically Verified ({ptype})[/bold green]")
+                console.print(f"Build Provenance: [bold green]✓ Cryptographically Verified ({ptype})[/bold green]")
             else:
-                rep_table.add_row("Build Provenance:", "[dim]None (unsigned release)[/dim]")
+                console.print("Build Provenance: [dim]None (unsigned release)[/dim]")
 
             if meta.monthly_downloads >= 100000:
-                rep_table.add_row("Monthly Downloads:", f"[bold green]{meta.monthly_downloads:,}[/bold green] [dim](High Adoption)[/dim]")
+                console.print(f"Monthly Downloads: [bold green]{meta.monthly_downloads:,}[/bold green] [dim](High Adoption)[/dim]")
             elif meta.monthly_downloads > 0:
-                rep_table.add_row("Monthly Downloads:", f"{meta.monthly_downloads:,}")
+                console.print(f"Monthly Downloads: {meta.monthly_downloads:,}")
             else:
-                rep_table.add_row("Monthly Downloads:", "[dim]0 or unindexed[/dim]")
+                console.print("Monthly Downloads: [dim]0 or unindexed[/dim]")
 
-            console.print(rep_table)
             console.print("\n[cyan]Downloading payload and performing AST + YARA analysis...[/cyan]")
 
         report = await adapter.download_and_inspect_payload(norm_name, meta.latest_version)
@@ -504,8 +495,10 @@ def inspect_cmd(package_name: str, ecosystem: str, json_output: bool):
                 "version": meta.latest_version,
                 "author": meta.author,
                 "author_email": meta.author_email,
-                "publisher_domain": author_domain,
-                "domain_trust_score": domain_rep.trust_score if domain_rep else 0.0,
+                "publisher_domain": author_domain,  # self-asserted registry metadata — not verified
+                # null (not 0.0) when the domain is not in a reputation index — the
+                # standalone CLI ships none yet. See SLOPWATCH_SCORE_CONVERGENCE_DESIGN.md.
+                "domain_trust_score": domain_rep.trust_score if domain_rep else None,
                 "has_provenance": getattr(meta, "has_provenance", False),
                 "provenance_type": getattr(meta, "provenance_type", None),
                 "monthly_downloads": meta.monthly_downloads,

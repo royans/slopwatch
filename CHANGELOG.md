@@ -48,6 +48,16 @@ logic and verdicts.
   user's own source tree; added an explicit "not a code-quality / AI-slop
   linter" boundary.
 
+### Fixed
+
+- **`inspect` no longer shows a misleading "Publisher Domain … (Unindexed / New
+  domain)" line.** The standalone CLI ships no author-domain reputation index, so
+  every domain read as "new" — and the field is self-asserted registry metadata
+  an impersonator can set to any value (`cisco.com`, `google.com`). The row is
+  hidden until the reputation-snapshot feature lands; `--json`
+  `domain_trust_score` is now `null` (not `0.0`) when there is no index. Build
+  provenance and download count — which are registry-verified — still show.
+
 ### Removed
 
 - **`aiodns` and `dnspython`** as dependencies — neither was imported anywhere
