@@ -9,6 +9,10 @@ logic and verdicts.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.3.0] — 2026-09-07
+
 ### Added
 
 - **Stable finding codes** (`slopwatch.core.finding_catalog`): every finding the
@@ -142,6 +146,7 @@ security scanner for PyPI and npm packages, manifests, and lockfiles.
 - Brand-impersonation and phantom-squat detection.
 - CLI: `check`, `audit`, `inspect`, `scan`, `info`, `init`.
 
-[Unreleased]: https://github.com/royans/slopwatch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/royans/slopwatch/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/royans/slopwatch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/royans/slopwatch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/royans/slopwatch/releases/tag/v0.1.0
