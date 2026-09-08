@@ -1484,3 +1484,68 @@ def test_display_name_brand_claim_detects_corporate_impersonation():
     assert display_name_brand_claim("Amazon Rekognition Textract Demoes", "amazon.com") is None
     # bare personal name containing a short generic token -> not flagged
     assert display_name_brand_claim("Bob Flow", "gmail.com") is None
+
+
+@pytest.mark.asyncio
+async def test_first_party_scanner_does_not_flag_itself(mocker):
+    """slopwatch ships the credential paths / eval / base64 it hunts for as rule
+    literals; it must not detect itself as malware."""
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.PYPI, normalized_name="slopwatch",
+        entity_token="slopwatch", capability_token="general", framework_token="python",
+        risk_weight=60,
+    )
+    meta = PackageMetadata(
+        ecosystem=Ecosystem.PYPI, package_name="slopwatch", latest_version="0.3.0",
+        author="Royans K", author_email="maintainer@example.com",
+        homepage="https://github.com/royans/slopwatch/",
+        description="Deterministic Zero-LLM AI package hallucination, slopsquatting, and supply chain threat auditor.",
+        first_published_at=datetime(2026, 8, 23, tzinfo=timezone.utc),
+        latest_release_at=datetime(2026, 9, 7, tzinfo=timezone.utc),
+        monthly_downloads=40,
+    )
+    ast = ASTSecurityReport(
+        total_source_files=60, total_lines_of_code=7000, total_code_size_bytes=250000,
+        is_empty_stub=False, code_size_tier="LARGE_CODEBASE",
+        flags=[
+            "CREDENTIAL_PATH_HARVESTING: 'AWS Credentials (~/.aws/credentials)' found in slopwatch-0.3.0/src/slopwatch/assessor/npm_source.py:142",
+            "SOURCE_CODE_DYNAMIC_CODE_LOADER: execution primitive combined with decode/network/obfuscation call in slopwatch-0.3.0/src/slopwatch/core/signals.py",
+            "SOURCE_CODE_ENCODED_PAYLOAD: 'atob()' found in slopwatch-0.3.0/src/slopwatch/core/signals.py:204",
+        ],
+        composite_threat_score=90, verdict=ThreatVerdict.MALICIOUS,
+    )
+    with patch("slopwatch.adapters.get_adapter", return_value=_mk_adapter(mocker, meta, ast)):
+        d = await evaluator.evaluate_candidate(candidate)
+    assert d.verdict == ThreatVerdict.VERIFIED_OFFICIAL
+    assert "SIGNAL_SECURITY_TOOLING_SELF_MATCH" in {s["signal_id"] for s in d.analysis_details["signals"]}
+
+
+@pytest.mark.asyncio
+async def test_security_tool_heuristic_needs_rule_file_and_no_weaponization(mocker):
+    """A generic 'security scanner' claim does NOT excuse a real install hook or
+    a credential read outside a rule/pattern file."""
+    from slopwatch.assessor.scorer import is_likely_security_tooling
+
+    class _M:
+        description = "supply chain security scanner"
+        keywords = []
+
+    class _A:
+        flags = [
+            "CREDENTIAL_PATH_HARVESTING: 'SSH Directory / Private Keys (~/.ssh)' found in pkg-1.0/pkg/rules.py:9",
+        ]
+    assert is_likely_security_tooling(_M(), _A()) is True
+
+    class _A2:
+        flags = [
+            "CREDENTIAL_PATH_HARVESTING: 'SSH Directory / Private Keys (~/.ssh)' found in pkg-1.0/pkg/exfil.py:9",
+        ]
+    assert is_likely_security_tooling(_M(), _A2()) is False
+
+    class _A3:
+        flags = [
+            "CREDENTIAL_PATH_HARVESTING: 'SSH Directory / Private Keys (~/.ssh)' found in pkg-1.0/pkg/rules.py:9",
+            "INSTALL_TIME_EXECUTION: 'os.system' executed at top-level in pkg-1.0/setup.py:3",
+        ]
+    assert is_likely_security_tooling(_M(), _A3()) is False

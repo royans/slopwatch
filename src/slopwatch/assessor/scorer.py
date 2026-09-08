@@ -85,6 +85,36 @@ GENERIC_ENTITY_TOKENS: Set[str] = {
     "toolkit", "runtime", "shared",
 }
 
+# First-party packages (this scanner and its control plane). A malware scanner
+# ships the very patterns it hunts for — credential paths, `eval`, base64 decode,
+# IMDS URLs — as string literals in its rule tables, so it flags ITSELF. Keyed on
+# (ecosystem, normalized_name) AND a verifiable repo URL so a squatter who
+# publishes `slopwatch` on another registry does not inherit the pass.
+FIRST_PARTY_PACKAGES: Dict[Tuple[str, str], Dict[str, Any]] = {
+    ("pypi", "slopwatch"): {"repo": "github.com/royans/slopwatch"},
+    ("pypi", "flagthis-sentinel-ops"): {"repo": "github.com/royans/flagthis"},
+}
+
+# Description / keyword markers of a package whose PURPOSE is scanning for
+# malicious code — it will legitimately contain credential paths, decode
+# routines and exec primitives as pattern DEFINITIONS, not behaviour.
+SECURITY_TOOLING_DESC_MARKERS = (
+    "malware", "slopsquat", "typosquat", "supply chain", "supply-chain",
+    "threat auditor", "threat detection", "threat intelligence", "security scanner",
+    "vulnerability scanner", "sast ", "static analysis security", "yara",
+    "antivirus", "indicators of compromise", "ioc feed", "credential scanner",
+    "secret scanner", "secrets detection", "security audit", "sbom",
+    "dependency confusion", "package hallucination",
+)
+
+# Source-file name fragments where a security tool keeps its rule / signature
+# tables. A credential-path or decode hit HERE is a definition, not an action.
+SECURITY_RULE_FILE_MARKERS = (
+    "rule", "rules", "signature", "signatures", "pattern", "patterns",
+    "detector", "detectors", "scanner", "heuristic", "heuristics", "assessor",
+    "signal", "signals", "yara", "yar", "taxonom", "ioc", "sast", "catalog",
+)
+
 # Official Vendor GitHub Organizations
 OFFICIAL_VENDOR_ORGS: Dict[str, List[str]] = {
     # Crypto & Web3
@@ -295,6 +325,68 @@ def looks_like_unextracted_payload(ast_report) -> bool:
         and getattr(ast_report, "total_lines_of_code", 0) == 100
         and getattr(ast_report, "total_code_size_bytes", 0) == 1000
     )
+
+
+def is_first_party_package(ecosystem, normalized_name: str, homepage, project_urls) -> bool:
+    """This scanner / its control plane, verified by the repo URL in metadata."""
+    key = (str(getattr(ecosystem, "value", ecosystem)).lower(), (normalized_name or "").lower())
+    spec = FIRST_PARTY_PACKAGES.get(key)
+    if not spec:
+        return False
+    urls = [u.lower() for u in ([homepage] if homepage else []) if isinstance(u, str)]
+    if isinstance(project_urls, dict):
+        urls += [u.lower() for u in project_urls.values() if isinstance(u, str)]
+    return any(spec["repo"] in u for u in urls)
+
+
+def is_likely_security_tooling(meta, ast_report) -> bool:
+    """A malware / supply-chain scanner contains the patterns it hunts for as
+    string-literal rule definitions. Recognise it so it doesn't flag itself (or
+    peers like it) — but ONLY when nothing indicates real weaponization: no
+    exfiltration destination, no obfuscation of its own code, no install hook,
+    no persistence / evasion / worm behaviour."""
+    desc = (getattr(meta, "description", "") or "").lower()
+    kw = getattr(meta, "keywords", None) or []
+    hay = desc + " " + " ".join(str(k).lower() for k in kw)
+    if not any(m in hay for m in SECURITY_TOOLING_DESC_MARKERS):
+        return False
+
+    flags = ast_report.flags
+    disqualifying = (
+        "EXFILTRATION_DESTINATION_DETECTED",
+        "SUSPICIOUS_OBFUSCATION",
+        "INSTALL_TIME_EXECUTION",
+        "INSTALL_TIME_CMDCLASS_OVERRIDE",
+        "MODULE_TOPLEVEL_EXECUTION",
+        "LIFECYCLE_SCRIPT",
+        "PYTHON_PTH_CODE_EXECUTION",
+        "SYSTEM_PERSISTENCE_TAMPERING",
+        "ANTI_ANALYSIS_EVASION",
+        "CROSS_ECOSYSTEM_WORM_PROPAGATION",
+        "GYP_WEAPONIZED_EXECUTION",
+        "SOURCE_CODE_PERSISTENT_BACKDOOR",
+        "SOURCE_CODE_EVASIVE_PAYLOAD",
+    )
+    if any(f.startswith(disqualifying) for f in flags):
+        return False
+
+    concern = [
+        f for f in flags
+        if f.startswith((
+            "CREDENTIAL_PATH_HARVESTING",
+            "SOURCE_CODE_DYNAMIC_CODE_LOADER",
+            "SOURCE_CODE_ENCODED_PAYLOAD",
+            "SOURCE_CODE_CONFIRMED_STEALER",
+        ))
+    ]
+    if not concern:
+        return False
+    for f in concern:
+        fn = _extract_flag_filename(f) or ""
+        stem = fn.rsplit(".", 1)[0]
+        if not any(m in stem for m in SECURITY_RULE_FILE_MARKERS):
+            return False
+    return True
 
 
 def _levenshtein_le_1(a: str, b: str) -> bool:
@@ -1591,9 +1683,30 @@ class ProgressiveThreatEvaluator:
                 and not weaponization_is_corroborated(ast_report.flags)
             )
 
-            if (is_established_community or is_pre_ai_legacy) and not has_confirmed_stealer_or_c2:
+            # This scanner / peer security tooling matching its own rule tables.
+            is_first_party = is_first_party_package(ecosystem, pkg_name, meta.homepage, meta.project_urls)
+            security_tooling_self_match = is_first_party or is_likely_security_tooling(meta, ast_report)
+
+            if (is_established_community or is_pre_ai_legacy or security_tooling_self_match) and not has_confirmed_stealer_or_c2:
                 has_malware_hooks = False
                 bare_install_exec_only = False
+            if security_tooling_self_match:
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_SECURITY_TOOLING_SELF_MATCH",
+                        category="CODE_ANALYSIS",
+                        severity="INFO",
+                        score_impact=0,
+                        rule_code="RULE_FIRST_PARTY_SECURITY_TOOL" if is_first_party else "RULE_SECURITY_TOOLING_PATTERN_TABLE",
+                        human_description=(
+                            "Package is a first-party / security-scanning tool: its credential-path, "
+                            "decode and exec matches are rule/signature DEFINITIONS in its detector "
+                            "source, not runtime behaviour. No exfiltration destination, obfuscation, "
+                            "install hook or persistence primitive present."
+                        ),
+                        metadata={"first_party": is_first_party, "homepage": meta.homepage},
+                    )
+                )
 
             # Hijack / Account takeover detection on trusted/official vendor package:
             # If weaponized malware hooks fired on a trusted vendor, DO NOT zero it out —
@@ -1625,7 +1738,10 @@ class ProgressiveThreatEvaluator:
             elif is_official_vendor:
                 verdict = ThreatVerdict.VERIFIED_OFFICIAL
                 final_score = min(20, accumulated_score)
-            elif (is_established_community or is_pre_ai_legacy) and not has_confirmed_stealer_or_c2:
+            elif is_first_party and not has_confirmed_stealer_or_c2:
+                verdict = ThreatVerdict.VERIFIED_OFFICIAL
+                final_score = min(15, accumulated_score)
+            elif (is_established_community or is_pre_ai_legacy or security_tooling_self_match) and not has_confirmed_stealer_or_c2:
                 verdict = ThreatVerdict.BENIGN_COMMUNITY
                 final_score = min(25, max(5, accumulated_score // 5))
             elif is_deprecated_pkg and days_dormant > 730:
