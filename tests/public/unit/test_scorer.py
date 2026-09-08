@@ -1283,3 +1283,204 @@ setup(name='langchain-serve', version=__version__)
 """
     report = inspect_python_code_ast(setup_code, 'setup.py')
     assert not any('INSTALL_TIME_EXECUTION' in f for f in report.flags)
+
+
+# ============================================================================
+# 2026-09 false-positive calibration: pre-AI legacy, uncorroborated install
+# hooks, extraction sentinels, generic brand tokens, publisher impersonation.
+# ============================================================================
+
+def _mk_adapter(mocker, meta, ast):
+    a = mocker.MagicMock()
+    a.inspect_package_metadata = AsyncMock(return_value=meta)
+    a.download_and_inspect_payload = AsyncMock(return_value=ast)
+    return a
+
+
+@pytest.mark.asyncio
+async def test_pre_ai_legacy_setup_os_system_is_not_malicious(mocker):
+    """A 2017 Django package whose only flag is a bare setup.py os.system() is a
+    decade-old build convention, not an AI-era slopsquat payload."""
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.PYPI, normalized_name="django-topology",
+        entity_token="topology", capability_token="topology", framework_token="django",
+        risk_weight=50,
+    )
+    meta = PackageMetadata(
+        ecosystem=Ecosystem.PYPI, package_name="django-topology", latest_version="1.0.2",
+        author="George Silva", author_email="georgexyz@gmail.com",
+        first_published_at=datetime(2017, 7, 4, tzinfo=timezone.utc),
+        latest_release_at=datetime(2017, 7, 4, tzinfo=timezone.utc),
+        monthly_downloads=30,
+    )
+    ast = ASTSecurityReport(
+        total_source_files=6, total_lines_of_code=762, total_code_size_bytes=24000,
+        is_empty_stub=False, code_size_tier="MODERATE_CODEBASE",
+        flags=[
+            "INSTALL_TIME_EXECUTION: 'os.system' executed at top-level in django-topology-1.0.2/setup.py:34",
+            "SOURCE_CODE_DYNAMIC_EXECUTION: 'Python Subprocess / OS Execution' found in django-topology-1.0.2/setup.py:34",
+        ],
+        composite_threat_score=45, verdict=ThreatVerdict.SUSPICIOUS,
+    )
+    with patch("slopwatch.adapters.get_adapter", return_value=_mk_adapter(mocker, meta, ast)):
+        d = await evaluator.evaluate_candidate(candidate)
+    assert d.verdict != ThreatVerdict.MALICIOUS
+    assert d.verdict == ThreatVerdict.BENIGN_COMMUNITY
+
+
+@pytest.mark.asyncio
+async def test_recent_bare_install_hook_is_suspicious_not_malicious(mocker):
+    """A 2025 package with a top-level os.system() but NO corroborating payload
+    signal is SUSPICIOUS (worth a look), not MALICIOUS (alert)."""
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.PYPI, normalized_name="quickfetch-helper",
+        entity_token="quickfetch", capability_token="helper", framework_token="python",
+        risk_weight=50,
+    )
+    meta = PackageMetadata(
+        ecosystem=Ecosystem.PYPI, package_name="quickfetch-helper", latest_version="0.1.0",
+        author="dev", author_email="dev@gmail.com",
+        first_published_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        latest_release_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        monthly_downloads=20,
+    )
+    ast = ASTSecurityReport(
+        total_source_files=3, total_lines_of_code=200, total_code_size_bytes=6000,
+        is_empty_stub=False, code_size_tier="MODERATE_CODEBASE",
+        flags=["INSTALL_TIME_EXECUTION: 'os.system' executed at top-level in quickfetch-helper-0.1.0/setup.py:10"],
+        composite_threat_score=45, verdict=ThreatVerdict.SUSPICIOUS,
+    )
+    with patch("slopwatch.adapters.get_adapter", return_value=_mk_adapter(mocker, meta, ast)):
+        d = await evaluator.evaluate_candidate(candidate)
+    assert d.verdict == ThreatVerdict.SUSPICIOUS
+
+
+@pytest.mark.asyncio
+async def test_recent_install_hook_with_exfil_stays_malicious(mocker):
+    """Corroboration present (exfil destination) => still MALICIOUS."""
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.PYPI, normalized_name="quickfetch-helper",
+        entity_token="quickfetch", capability_token="helper", framework_token="python",
+        risk_weight=50,
+    )
+    meta = PackageMetadata(
+        ecosystem=Ecosystem.PYPI, package_name="quickfetch-helper", latest_version="0.1.0",
+        author="dev", author_email="dev@gmail.com",
+        first_published_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        latest_release_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        monthly_downloads=20,
+    )
+    ast = ASTSecurityReport(
+        total_source_files=3, total_lines_of_code=200, total_code_size_bytes=6000,
+        is_empty_stub=False, code_size_tier="MODERATE_CODEBASE",
+        flags=[
+            "INSTALL_TIME_EXECUTION: 'os.system' executed at top-level in quickfetch-helper-0.1.0/setup.py:10",
+            "EXFILTRATION_DESTINATION_DETECTED: 'Discord Webhook' found in quickfetch-helper-0.1.0/setup.py:12",
+        ],
+        composite_threat_score=90, verdict=ThreatVerdict.MALICIOUS,
+    )
+    with patch("slopwatch.adapters.get_adapter", return_value=_mk_adapter(mocker, meta, ast)):
+        d = await evaluator.evaluate_candidate(candidate)
+    assert d.verdict == ThreatVerdict.MALICIOUS
+
+
+@pytest.mark.asyncio
+async def test_pre_ai_legacy_with_real_stealer_stays_malicious(mocker):
+    """The pre-AI gate must not shield a genuine confirmed stealer."""
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.PYPI, normalized_name="old-lib-x",
+        entity_token="old", capability_token="x", framework_token="python", risk_weight=50,
+    )
+    meta = PackageMetadata(
+        ecosystem=Ecosystem.PYPI, package_name="old-lib-x", latest_version="1.0.0",
+        author="x", author_email="x@gmail.com",
+        first_published_at=datetime(2019, 1, 1, tzinfo=timezone.utc),
+        latest_release_at=datetime(2019, 1, 1, tzinfo=timezone.utc),
+        monthly_downloads=5,
+    )
+    ast = ASTSecurityReport(
+        total_source_files=3, total_lines_of_code=200, total_code_size_bytes=6000,
+        is_empty_stub=False, code_size_tier="MODERATE_CODEBASE",
+        flags=["SOURCE_CODE_CONFIRMED_STEALER: 'Browser Credential Theft' found in old-lib-x-1.0.0/x/core.py:9"],
+        composite_threat_score=90, verdict=ThreatVerdict.MALICIOUS,
+    )
+    with patch("slopwatch.adapters.get_adapter", return_value=_mk_adapter(mocker, meta, ast)):
+        d = await evaluator.evaluate_candidate(candidate)
+    assert d.verdict == ThreatVerdict.MALICIOUS
+
+
+@pytest.mark.asyncio
+async def test_extraction_sentinel_suppresses_empty_stub_penalty(mocker):
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.NPM, normalized_name="some-cli",
+        entity_token="some", capability_token="cli", framework_token="node", risk_weight=50,
+    )
+    meta = PackageMetadata(
+        ecosystem=Ecosystem.NPM, package_name="some-cli", latest_version="2.1.0",
+        author="dev", author_email="dev@gmail.com",
+        first_published_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        latest_release_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        monthly_downloads=500,
+    )
+    ast = ASTSecurityReport(
+        total_source_files=1, total_lines_of_code=100, total_code_size_bytes=1000,
+        is_empty_stub=True, code_size_tier="TINY_CODEBASE",
+        flags=[], composite_threat_score=0, verdict=ThreatVerdict.BENIGN_COMMUNITY,
+    )
+    with patch("slopwatch.adapters.get_adapter", return_value=_mk_adapter(mocker, meta, ast)):
+        d = await evaluator.evaluate_candidate(candidate)
+    sigs = {s["signal_id"] for s in d.analysis_details["signals"]}
+    assert "SIGNAL_EMPTY_CODE_STUB" not in sigs
+    assert "SIGNAL_PAYLOAD_NOT_INSPECTED" in sigs
+
+
+@pytest.mark.asyncio
+async def test_generic_trailing_entity_is_not_brand_claim(mocker):
+    """entity_token 'base' from a `<x>-base` name is not a high-value-brand claim."""
+    evaluator = ProgressiveThreatEvaluator()
+    candidate = WatchlistCandidate(
+        ecosystem=Ecosystem.PYPI, normalized_name="pykokkos-base",
+        entity_token="base", capability_token="pykokkos", framework_token="python", risk_weight=50,
+    )
+    meta = PackageMetadata(
+        ecosystem=Ecosystem.PYPI, package_name="pykokkos-base", latest_version="0.0.7",
+        author="J R Madsen", author_email="jrmadsen@lbl.gov",
+        first_published_at=datetime(2021, 5, 12, tzinfo=timezone.utc),
+        latest_release_at=datetime(2021, 5, 12, tzinfo=timezone.utc),
+        monthly_downloads=377,
+    )
+    ast = ASTSecurityReport(
+        total_source_files=40, total_lines_of_code=5000, total_code_size_bytes=200000,
+        is_empty_stub=False, code_size_tier="LARGE_CODEBASE",
+        flags=["BUNDLED_NATIVE_BINARY: Unexpected compiled binary 'pykokkos-base-0.0.7/external/kokkos/build/libkokkoscore.dylib'"],
+        composite_threat_score=15, verdict=ThreatVerdict.BENIGN_COMMUNITY,
+    )
+    with patch("slopwatch.adapters.get_adapter", return_value=_mk_adapter(mocker, meta, ast)):
+        d = await evaluator.evaluate_candidate(candidate)
+    sigs = {s["signal_id"] for s in d.analysis_details["signals"]}
+    assert "SIGNAL_HIGH_VALUE_BRAND_TARGET" not in sigs
+    assert d.verdict in (ThreatVerdict.BENIGN_COMMUNITY, ThreatVerdict.VERIFIED_OFFICIAL)
+
+
+def test_lookalike_vendor_domain_detects_tld_swap():
+    from slopwatch.assessor.scorer import lookalike_vendor_domain
+    hit = lookalike_vendor_domain("cisco.co")
+    assert hit is not None and hit[0] == "cisco.com"
+    assert lookalike_vendor_domain("cisco.com") is None
+    assert lookalike_vendor_domain("gmail.com") is None
+    assert lookalike_vendor_domain(None) is None
+
+
+def test_display_name_brand_claim_detects_corporate_impersonation():
+    from slopwatch.assessor.scorer import display_name_brand_claim
+    hit = display_name_brand_claim("Cisco Systems Inc.", "c8kv.co")
+    assert hit is not None and hit[0] == "cisco"
+    # publisher actually on the vendor domain -> legitimate
+    assert display_name_brand_claim("Amazon Rekognition Textract Demoes", "amazon.com") is None
+    # bare personal name containing a short generic token -> not flagged
+    assert display_name_brand_claim("Bob Flow", "gmail.com") is None

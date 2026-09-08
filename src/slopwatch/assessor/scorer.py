@@ -10,6 +10,7 @@ Evaluates package risks across an explicit, additive point rubric:
 """
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Set, Tuple
 from pydantic import BaseModel
@@ -69,6 +70,19 @@ HIGH_VALUE_BRANDS: Set[str] = {
     "lastpass", "bitwarden", "hashicorp", "hashicorp-vault", "cyberark", "wiz", "netskope",
     "zscaler", "sailpoint", "splunk", "pingidentity", "onelogin", "jfrog",
     "sonarqube", "sonarsource", "veracode", "checkmarx",
+}
+
+# Generic English / dev-vocabulary words that also happen to be brand-table
+# entries (Coinbase "Base", etc.). As a *trailing* name segment they carry no
+# impersonation signal — `kaa-base`, `robotpy-hal-base`, `*-core`, `*-utils`,
+# `*-common` are overwhelmingly legitimate. Only a leading occurrence is treated
+# as a brand claim.
+GENERIC_ENTITY_TOKENS: Set[str] = {
+    "base", "core", "common", "utils", "util", "api", "apis", "client",
+    "sdk", "tools", "tool", "cli", "helper", "helpers", "server", "agent",
+    "data", "lib", "libs", "app", "apps", "demo", "example", "examples",
+    "plugin", "plugins", "addon", "extension", "extensions", "wrapper",
+    "toolkit", "runtime", "shared",
 }
 
 # Official Vendor GitHub Organizations
@@ -230,6 +244,151 @@ CONFIRMED_DANGEROUS_FLAG_PREFIXES = (
     # to HIGH (Shai-Hulud worm function-name signatures); unlike every other
     # prefix in this tuple, it hasn't been uniformly verified reliable.
 )
+
+
+# The AI-hallucination / slopsquatting wave is a post-ChatGPT phenomenon: the
+# brand tokens attackers squat ("claude-", "langchain-", "vllm-") and the
+# LLM-suggested package names that make slopsquatting work did not exist at
+# scale before this. A package whose FIRST publish predates 2022 and whose
+# LATEST release predates 2023 therefore cannot be an AI-era slopsquat — its
+# `os.system()` in setup.py is a decade-old build convention, not a payload.
+AI_SLOP_ERA_FIRST_PUBLISH_CUTOFF = datetime(2022, 1, 1, tzinfo=timezone.utc)
+AI_SLOP_ERA_LATEST_RELEASE_CUTOFF = datetime(2023, 1, 1, tzinfo=timezone.utc)
+
+# Flag prefixes that, on their own, corroborate that an install-time / import-time
+# code-execution hook is actually WEAPONIZED (rather than a legitimate build step
+# — `cmake`, `git describe`, `exec(open('version.py').read())` — that the AST
+# benign-filter didn't recognise). A bare INSTALL_TIME_EXECUTION / LIFECYCLE_SCRIPT
+# with none of these present is SUSPICIOUS, not MALICIOUS.
+WEAPONIZATION_CORROBORATING_PREFIXES = (
+    "EXFILTRATION_DESTINATION_DETECTED",
+    "CREDENTIAL_PATH_HARVESTING",
+    "SOURCE_CODE_CONFIRMED_STEALER",
+    "SOURCE_CODE_PERSISTENT_BACKDOOR",
+    "SOURCE_CODE_EVASIVE_PAYLOAD",
+    "SOURCE_CODE_DYNAMIC_CODE_LOADER",
+    "SOURCE_CODE_ENCODED_PAYLOAD",
+    "SUSPICIOUS_OBFUSCATION",
+    "SUSPICIOUS_SHELL_COMMAND",
+    "SYSTEM_PERSISTENCE_TAMPERING",
+    "ANTI_ANALYSIS_EVASION",
+    "CROSS_ECOSYSTEM_WORM_PROPAGATION",
+    "INSTALL_TIME_NETWORK_SOCKET",
+    "GYP_WEAPONIZED_EXECUTION",
+    "PYTHON_PTH_CODE_EXECUTION",
+    "OBFUSCATED_DYNAMIC_ACCESS",
+)
+
+
+def weaponization_is_corroborated(flags: List[str]) -> bool:
+    """True when at least one flag independently confirms a weaponized payload,
+    beyond the mere existence of an install-time / top-level execution hook."""
+    return any(f.startswith(WEAPONIZATION_CORROBORATING_PREFIXES) for f in flags)
+
+
+# The AST/manifest inspectors emit this exact triple when a tarball could not be
+# downloaded or fully extracted (see ASTSecurityReport defaults). Any verdict
+# built on top of it is standing on nothing.
+def looks_like_unextracted_payload(ast_report) -> bool:
+    return (
+        getattr(ast_report, "total_source_files", 0) <= 1
+        and getattr(ast_report, "total_lines_of_code", 0) == 100
+        and getattr(ast_report, "total_code_size_bytes", 0) == 1000
+    )
+
+
+def _levenshtein_le_1(a: str, b: str) -> bool:
+    """True if `a` and `b` are within edit distance 1 (cheap bounded check)."""
+    if a == b:
+        return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la == lb:
+        return sum(1 for x, y in zip(a, b) if x != y) == 1
+    # lengths differ by exactly 1 — check single insertion/deletion
+    short, lng = (a, b) if la < lb else (b, a)
+    i = j = 0
+    edited = False
+    while i < len(short) and j < len(lng):
+        if short[i] == lng[j]:
+            i += 1
+            j += 1
+        elif edited:
+            return False
+        else:
+            edited = True
+            j += 1
+    return True
+
+
+# Common cheap TLD swaps used for vendor-domain impersonation (real is almost
+# always .com / .io / .ai / .org).
+_LOOKALIKE_TLDS = ("com", "co", "io", "org", "net", "ai", "app", "dev", "cloud", "inc", "us", "cc", "xyz")
+
+
+def lookalike_vendor_domain(author_domain: Optional[str]) -> Optional[Tuple[str, str]]:
+    """If `author_domain` is a near-miss of a real vendor domain (TLD swap or a
+    single-character edit) — but not an exact match — return (real_domain, vendor_key)."""
+    if not author_domain or "." not in author_domain:
+        return None
+    ad = author_domain.lower().strip()
+    if ad in PUBLIC_EMAIL_PROVIDERS or ad in DISPOSABLE_EMAIL_DOMAINS:
+        return None
+    ad_name, ad_tld = ad.rsplit(".", 1)
+    for vendor_key, domains in VENDOR_DOMAINS.items():
+        for real in domains:
+            real = real.lower()
+            if ad == real or ad.endswith(f".{real}"):
+                return None  # legitimately on the vendor domain
+            if "." not in real:
+                continue
+            real_name, real_tld = real.rsplit(".", 1)
+            if len(real_name) < 4:
+                continue
+            # TLD swap: cisco.co / cisco.io for cisco.com
+            if ad_name == real_name and ad_tld != real_tld and ad_tld in _LOOKALIKE_TLDS:
+                return real, vendor_key
+            # single-character edit on the full registrable domain
+            if len(ad) >= 6 and _levenshtein_le_1(ad, real):
+                return real, vendor_key
+    return None
+
+
+# Words that show up in company display names and confirm a corporate-identity
+# claim rather than a personal name.
+_CORP_IDENTITY_MARKERS = ("inc", "inc.", "llc", "ltd", "corp", "corporation", "systems", "technologies", "technology", "labs", "gmbh", "co.", "plc", "foundation")
+
+# Brand tokens too short / too generic to match safely inside a free-text name.
+_DISPLAY_CLAIM_STOPWORDS = {
+    "hf", "sol", "eth", "btc", "ada", "near", "sui", "base", "safe", "circle",
+    "together", "flow", "mint", "grok", "duo", "core", "matic", "web3", "xrp", "trx",
+}
+
+
+def display_name_brand_claim(author: Optional[str], author_domain: Optional[str]) -> Optional[Tuple[str, List[str]]]:
+    """If the publisher DISPLAY NAME claims a known vendor's identity while the
+    publishing email is not on that vendor's domain, return (vendor_key, real_domains)."""
+    if not author:
+        return None
+    name_l = author.lower()
+    name_tokens = set(re.findall(r"[a-z0-9]+", name_l))
+    looks_corporate = any(m.rstrip(".") in name_tokens for m in _CORP_IDENTITY_MARKERS)
+    dom = (author_domain or "").lower()
+    for vendor_key, domains in VENDOR_DOMAINS.items():
+        if len(vendor_key) < 4 or vendor_key in _DISPLAY_CLAIM_STOPWORDS:
+            continue
+        if vendor_key not in name_tokens:
+            continue
+        # publisher email actually on the vendor domain → legitimate
+        if dom and any(dom == d or dom.endswith(f".{d}") for d in domains):
+            return None
+        # personal name that merely contains the token and nothing corporate →
+        # too weak to flag on its own
+        if not looks_corporate and vendor_key not in dom:
+            continue
+        return vendor_key, list(domains)
+    return None
 
 
 def has_install_time_code_execution(flags: List[str]) -> bool:
@@ -593,29 +752,49 @@ class ProgressiveThreatEvaluator:
                 candidate.entity_token.lower() == "eth"
                 and any(w in pkg_name.lower() for w in ("theme", "sphinx", "rtd", "zurich", "polytechnic"))
             )
+            _entity_l = candidate.entity_token.lower()
+            _name_l = pkg_name.lower().replace("_", "-")
+            if _name_l.startswith("@") and "/" in _name_l:
+                _name_l = _name_l.split("/", 1)[1]
+            # Generic English / dev-vocabulary tokens ("base", "core", "utils", …)
+            # are brand entries only for a handful of real products (Coinbase Base,
+            # etc.) and are otherwise the trailing half of thousands of legit
+            # names (`kaa-base`, `robotpy-hal-base`, `*-core`, `*-utils`). Treat
+            # them as a brand claim ONLY when the token actually leads the name.
+            _is_generic_trailing_entity = (
+                _entity_l in GENERIC_ENTITY_TOKENS
+                and _name_l != _entity_l
+                and not _name_l.startswith(f"{_entity_l}-")
+            )
+            # framework == entity (`amazon-…-amazon`, `google-google-…`) is a
+            # decomposition artifact, not a real `{framework}-{entity}-{capability}`
+            # hallucination template.
+            _degenerate_triplet = candidate.framework_token.lower() == _entity_l
             is_known_brand = (
-                (candidate.entity_token.lower() in HIGH_VALUE_BRANDS or candidate.entity_token.lower() in VENDOR_DOMAINS)
+                (_entity_l in HIGH_VALUE_BRANDS or _entity_l in VENDOR_DOMAINS)
                 and not is_eth_theme
+                and not _is_generic_trailing_entity
             )
 
             if is_known_brand:
-                accumulated_score += 25
-                evidence_signals.append(
-                    EvidenceSignal(
-                        signal_id="SIGNAL_COMBINATORIAL_GRAMMAR_MATCH",
-                        category="NAMING_HEURISTIC",
-                        severity="MEDIUM",
-                        score_impact=25,
-                        rule_code="RULE_GRAMMAR_TRIPLET_MATCH",
-                        human_description=f"Package name '{pkg_name}' matches AI hallucination template [{candidate.framework_token}] + [{candidate.entity_token}] + [{candidate.capability_token}].",
-                        metadata={
-                            "template": "{framework}-{entity}-{capability}",
-                            "framework": candidate.framework_token,
-                            "entity": candidate.entity_token,
-                            "capability": candidate.capability_token,
-                        },
+                if not _degenerate_triplet:
+                    accumulated_score += 25
+                    evidence_signals.append(
+                        EvidenceSignal(
+                            signal_id="SIGNAL_COMBINATORIAL_GRAMMAR_MATCH",
+                            category="NAMING_HEURISTIC",
+                            severity="MEDIUM",
+                            score_impact=25,
+                            rule_code="RULE_GRAMMAR_TRIPLET_MATCH",
+                            human_description=f"Package name '{pkg_name}' matches AI hallucination template [{candidate.framework_token}] + [{candidate.entity_token}] + [{candidate.capability_token}].",
+                            metadata={
+                                "template": "{framework}-{entity}-{capability}",
+                                "framework": candidate.framework_token,
+                                "entity": candidate.entity_token,
+                                "capability": candidate.capability_token,
+                            },
+                        )
                     )
-                )
                 accumulated_score += 15
                 evidence_signals.append(
                     EvidenceSignal(
@@ -805,6 +984,46 @@ class ProgressiveThreatEvaluator:
                         metadata={"author_email": meta.author_email, "entity": candidate.entity_token},
                     )
                 )
+
+            # ==================== 2b. PUBLISHER IMPERSONATION (lookalike domain / display-name) ====================
+            if not is_trusted_vendor:
+                lookalike_hit = lookalike_vendor_domain(author_domain)
+                if lookalike_hit:
+                    real_domain, vendor_key = lookalike_hit
+                    accumulated_score += 35
+                    evidence_signals.append(
+                        EvidenceSignal(
+                            signal_id="SIGNAL_LOOKALIKE_PUBLISHER_DOMAIN",
+                            category="VENDOR_AUTHENTICITY",
+                            severity="HIGH",
+                            score_impact=35,
+                            rule_code="RULE_LOOKALIKE_PUBLISHER_DOMAIN",
+                            human_description=(
+                                f"Publisher email domain '@{author_domain}' is a lookalike of the real "
+                                f"'{vendor_key}' vendor domain '{real_domain}' (TLD swap / single-character edit)."
+                            ),
+                            metadata={"author_domain": author_domain, "lookalike_of": real_domain, "vendor": vendor_key},
+                        )
+                    )
+
+                display_claim = display_name_brand_claim(meta.author, author_domain)
+                if display_claim:
+                    claimed_vendor, real_domains = display_claim
+                    accumulated_score += 20
+                    evidence_signals.append(
+                        EvidenceSignal(
+                            signal_id="SIGNAL_DISPLAY_NAME_BRAND_CLAIM",
+                            category="VENDOR_AUTHENTICITY",
+                            severity="MEDIUM",
+                            score_impact=20,
+                            rule_code="RULE_DISPLAY_NAME_BRAND_CLAIM",
+                            human_description=(
+                                f"Publisher display name '{meta.author}' claims vendor identity '{claimed_vendor}', "
+                                f"but the publishing email '@{author_domain or '?'}' is not on {' / '.join(real_domains)}."
+                            ),
+                            metadata={"author": meta.author, "claimed_vendor": claimed_vendor, "author_domain": author_domain},
+                        )
+                    )
 
             # Package Structural Effort Signals (+/- 15 pts)
             desc_len = len(meta.description or "")
@@ -997,13 +1216,35 @@ class ProgressiveThreatEvaluator:
                     is_suspicious_hook = "INSTALL_TIME" in f or "LIFECYCLE" in f
                     flag_prefix = f.split(":")[0].strip() if ":" in f else f[:30]
 
-                    pts = 85 if is_stealer else 45 if is_crit else 25 if is_suspicious_hook else 15
+                    # Plain os.environ / process.env access is how every library
+                    # reads its API key — it only carries weight when the YARA
+                    # layer classified it as sensitive-token / bulk-env harvesting,
+                    # or when an exfil destination sits in the same file (handled
+                    # by has_confirmed_dangerous_execution). Otherwise it is 0 pts
+                    # and must never be the headline finding on a package.
+                    is_benign_env_access = (
+                        flag_prefix == "SOURCE_CODE_ENV_VARS_ACCESS"
+                        and not any(s in f for s in ("Sensitive Token", "Bulk Environment", "Credential", "Secret"))
+                    )
+
+                    pts = (
+                        0 if is_benign_env_access
+                        else 85 if is_stealer
+                        else 45 if is_crit
+                        else 25 if is_suspicious_hook
+                        else 15
+                    )
 
                     # Per-category score caps to prevent flooding on large, multi-file codebases
                     curr_pts = kind_points.get(flag_prefix, 0)
                     if flag_prefix in ("SOURCE_CODE_ENV_VARS_ACCESS", "SOURCE_CODE_DYNAMIC_EXECUTION"):
                         allowed_pts = max(0, min(pts, 30 - curr_pts))
-                    elif flag_prefix in ("BUNDLED_NATIVE_BINARY", "SYNTAX_ERROR"):
+                    elif flag_prefix == "BUNDLED_NATIVE_BINARY":
+                        # Native libs are expected in packages that vendor / compile
+                        # C/C++/CUDA extensions (`*-base`, pybind11 trees). Keep it
+                        # as a weak signal, not a codebase-flooding one.
+                        allowed_pts = max(0, min(pts, 15 - curr_pts))
+                    elif flag_prefix == "SYNTAX_ERROR":
                         allowed_pts = max(0, min(pts, 25 - curr_pts))
                     elif not is_crit:
                         allowed_pts = max(0, min(pts, 45 - curr_pts))
@@ -1046,7 +1287,26 @@ class ProgressiveThreatEvaluator:
                 )
 
             # Codebase Size & Effort Signals
-            if ast_report.is_empty_stub and not is_vendor_domain:
+            extraction_incomplete = looks_like_unextracted_payload(ast_report)
+            if extraction_incomplete:
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_PAYLOAD_NOT_INSPECTED",
+                        category="CODE_ANALYSIS",
+                        severity="INFO",
+                        score_impact=0,
+                        rule_code="RULE_EXTRACTION_INCOMPLETE",
+                        human_description=(
+                            "Package archive could not be downloaded/extracted for code inspection "
+                            "(sentinel 1-file/100-LOC/1000-byte report). Effort and code-size signals suppressed."
+                        ),
+                        metadata={
+                            "total_source_files": ast_report.total_source_files,
+                            "total_lines_of_code": ast_report.total_lines_of_code,
+                        },
+                    )
+                )
+            if ast_report.is_empty_stub and not is_vendor_domain and not extraction_incomplete:
                 accumulated_score += 15
                 evidence_signals.append(
                     EvidenceSignal(
@@ -1304,12 +1564,47 @@ class ProgressiveThreatEvaluator:
                 or (days_dormant >= 365 and ast_report.total_lines_of_code >= 1000)
             )
 
-            if is_established_community and not has_confirmed_stealer_or_c2:
+            # Pre-AI legacy safeguard: a package first published before 2022 whose
+            # newest release is also pre-2023 cannot be an AI-era slopsquat. Its
+            # setup.py `os.system`/`eval` is a decade-old build convention. Only a
+            # genuine stealer / C2 / exfil flag keeps it dangerous.
+            latest_rel_dt = meta.latest_release_at or meta.published_at
+            if latest_rel_dt is not None and latest_rel_dt.tzinfo is None:
+                latest_rel_dt = latest_rel_dt.replace(tzinfo=timezone.utc)
+            _first_pub_cmp = first_pub_dt
+            if _first_pub_cmp is not None and _first_pub_cmp.tzinfo is None:
+                _first_pub_cmp = _first_pub_cmp.replace(tzinfo=timezone.utc)
+            is_pre_ai_legacy = bool(
+                _first_pub_cmp is not None
+                and latest_rel_dt is not None
+                and _first_pub_cmp < AI_SLOP_ERA_FIRST_PUBLISH_CUTOFF
+                and latest_rel_dt < AI_SLOP_ERA_LATEST_RELEASE_CUTOFF
+            )
+
+            # A top-level / install-time execution hook that nothing else
+            # corroborates (no exfil host, credential harvest, encoded payload,
+            # obfuscation, shell cradle, persistence, socket, worm). SUSPICIOUS,
+            # never MALICIOUS on its own.
+            bare_install_exec_only = bool(
+                has_malware_hooks
+                and not has_confirmed_stealer_or_c2
+                and not weaponization_is_corroborated(ast_report.flags)
+            )
+
+            if (is_established_community or is_pre_ai_legacy) and not has_confirmed_stealer_or_c2:
                 has_malware_hooks = False
+                bare_install_exec_only = False
 
             # Hijack / Account takeover detection on trusted/official vendor package:
-            # If weaponized malware hooks fired on a trusted vendor, DO NOT zero it out!
-            if (is_official_vendor or is_trusted_vendor) and has_malware_hooks and not is_deprecated_pkg:
+            # If weaponized malware hooks fired on a trusted vendor, DO NOT zero it out —
+            # but only when the payload is genuinely corroborated (a stale setup.py
+            # `os.system` on a years-old verified-vendor release is not a takeover).
+            if (
+                (is_official_vendor or is_trusted_vendor)
+                and has_malware_hooks
+                and not is_deprecated_pkg
+                and not bare_install_exec_only
+            ):
                 verdict = ThreatVerdict.MALICIOUS
                 final_score = max(75, accumulated_score + 25)
                 evidence_signals.append(
@@ -1330,7 +1625,7 @@ class ProgressiveThreatEvaluator:
             elif is_official_vendor:
                 verdict = ThreatVerdict.VERIFIED_OFFICIAL
                 final_score = min(20, accumulated_score)
-            elif is_established_community and not has_confirmed_stealer_or_c2:
+            elif (is_established_community or is_pre_ai_legacy) and not has_confirmed_stealer_or_c2:
                 verdict = ThreatVerdict.BENIGN_COMMUNITY
                 final_score = min(25, max(5, accumulated_score // 5))
             elif is_deprecated_pkg and days_dormant > 730:
@@ -1338,13 +1633,34 @@ class ProgressiveThreatEvaluator:
                 # are legacy projects, not active modern slopsquatting attacks.
                 verdict = ThreatVerdict.BENIGN_COMMUNITY
                 final_score = min(25, max(5, accumulated_score // 5))
-            elif has_malware_hooks and not is_deprecated_pkg:
+            elif has_malware_hooks and not is_deprecated_pkg and not bare_install_exec_only:
                 # Confirmed dangerous install-time code execution on active package
                 verdict = ThreatVerdict.MALICIOUS
                 final_score = max(120, accumulated_score + 50)
             elif is_deprecated_pkg and not has_malware_hooks:
                 verdict = ThreatVerdict.BENIGN_COMMUNITY
                 final_score = min(20, max(5, accumulated_score // 5))
+            elif bare_install_exec_only and not is_deprecated_pkg:
+                # An install-time / top-level execution hook with nothing
+                # corroborating a payload. Worth a human look, not an alert.
+                verdict = ThreatVerdict.SUSPICIOUS
+                final_score = min(75, max(35, accumulated_score))
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_UNCORROBORATED_INSTALL_HOOK",
+                        category="CODE_ANALYSIS",
+                        severity="MEDIUM",
+                        score_impact=0,
+                        rule_code="RULE_INSTALL_HOOK_UNCORROBORATED",
+                        human_description=(
+                            "Package executes code at install/import time, but no exfiltration "
+                            "destination, credential access, encoded payload, obfuscation, shell "
+                            "cradle, or persistence primitive corroborates a weaponized payload. "
+                            "Downgraded from MALICIOUS to SUSPICIOUS pending manual review."
+                        ),
+                        metadata={"flags": [f for f in ast_report.flags if "INSTALL_TIME" in f or "LIFECYCLE" in f or "MODULE_TOPLEVEL" in f][:8]},
+                    )
+                )
             elif has_malware_hooks:
                 # Deprecated package with suspicious execution hooks
                 verdict = ThreatVerdict.SUSPICIOUS

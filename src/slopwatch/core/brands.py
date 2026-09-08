@@ -108,15 +108,42 @@ PRIORITY_BRAND_WEIGHTS: Dict[str, int] = {
 }
 
 
+# Brand tokens that are also ordinary English / dev vocabulary. For these a
+# match only counts when the token *leads* the name (the classic impersonation
+# position, e.g. `base-sdk`) — never as a trailing `-base` / `-core` / `-utils`
+# segment, which is overwhelmingly legitimate (`kaa-base`, `robotpy-hal-base`,
+# `pykokkos-base`, `<x>-core`, `<x>-utils`, `<x>-common`).
+AMBIGUOUS_BRAND_TOKENS = frozenset({
+    "base", "safe", "together", "circle", "phantom", "rainbow", "argent",
+    "modal", "fal", "flow", "mint", "near", "sui", "aptos", "grok", "sol",
+    "eth", "btc", "hf", "matic", "core", "common", "utils", "util", "api",
+    "client", "sdk", "tools", "tool", "cli", "server", "agent", "data",
+    "workspace", "shared", "runtime",
+})
+
+
+def _name_matches_token(pkg_lower: str, token: str) -> bool:
+    if token in AMBIGUOUS_BRAND_TOKENS:
+        return pkg_lower == token or pkg_lower.startswith(f"{token}-")
+    return (
+        pkg_lower == token
+        or pkg_lower.startswith(f"{token}-")
+        or f"-{token}-" in pkg_lower
+        or pkg_lower.endswith(f"-{token}")
+    )
+
+
 def compute_brand_priority(package_name: str) -> Optional[tuple[str, int]]:
     """
     Check if a package name matches a priority brand entity and calculate boosted weight.
     """
     pkg_lower = package_name.lower().replace("_", "-")
+    if pkg_lower.startswith("@") and "/" in pkg_lower:
+        pkg_lower = pkg_lower.split("/", 1)[1]
     for brand, weight in PRIORITY_BRAND_WEIGHTS.items():
-        if pkg_lower == brand or pkg_lower.startswith(f"{brand}-") or f"-{brand}-" in pkg_lower or pkg_lower.endswith(f"-{brand}"):
+        if _name_matches_token(pkg_lower, brand):
             return brand, weight
     for entity in ENTITIES:
-        if pkg_lower == entity or pkg_lower.startswith(f"{entity}-") or f"-{entity}-" in pkg_lower or pkg_lower.endswith(f"-{entity}"):
+        if _name_matches_token(pkg_lower, entity):
             return entity, 750
     return None
