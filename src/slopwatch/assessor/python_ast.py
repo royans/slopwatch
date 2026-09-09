@@ -13,7 +13,7 @@ import re
 import tarfile
 import zipfile
 import warnings
-from typing import List, Tuple, Dict, Set, Optional
+from typing import List, Tuple, Dict, Set, Optional, Iterable
 from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
 from slopwatch.assessor.yara_engine import get_yara_scanner
 from slopwatch.core.confidence import distinct_signal_confidences, passes_confidence_gate
@@ -44,7 +44,7 @@ _RAW_IP_URL_RE = re.compile(
     re.IGNORECASE,
 )
 
-from slopwatch.assessor.yara_engine import is_public_exfil_ip, get_yara_scanner
+from slopwatch.assessor.yara_engine import is_public_exfil_ip, get_yara_scanner, is_generated_api_client
 
 # Backward-compatible alias
 _is_public_exfil_ip = is_public_exfil_ip
@@ -66,6 +66,87 @@ def _is_test_or_fixture_path(path: str) -> bool:
     if filename.startswith("test_") or filename.endswith("_test.py"):
         return True
     return False
+
+
+def _venv_roots(names: Iterable[str]) -> Tuple[str, ...]:
+    """Archive-relative directory prefixes of any bundled virtualenv, keyed off
+    its ``pyvenv.cfg`` marker file.
+
+    Authors sometimes commit a whole ``venv/`` into an sdist — real case:
+    ``google-form-api`` 0.1.0, a 4.2 MB sdist that is 1102 of 1116 files of
+    ``venv/``. Left in scope, virtualenv's and setuptools' stock
+    ``_virtualenv.pth`` / ``distutils-precedence.pth`` startup files,
+    ``activate_this.py`` and the console-script ``*.exe`` shims get scanned as
+    though they were the package's own code and light up
+    PYTHON_PTH_CODE_EXECUTION / BUNDLED_NATIVE_BINARY /
+    SOURCE_CODE_ENV_VARS_ACCESS — enough to score the package MALICIOUS on
+    boilerplate alone.
+
+    To keep this from being an evasion lever, a marker is only honoured when it
+    sits in a nested subdirectory (never the archive/package root) *and* that
+    same directory actually contains a ``site-packages`` tree — i.e. it is a
+    real environment layout, not a lone ``pyvenv.cfg`` dropped next to
+    ``setup.py`` to get the package itself skipped.
+    """
+    all_norm = [n.replace("\\", "/") for n in names]
+    roots = []
+    for norm in all_norm:
+        if norm.rsplit("/", 1)[-1] != "pyvenv.cfg":
+            continue
+        root = norm[: -len("pyvenv.cfg")]  # keeps trailing "/"
+        if root.count("/") < 2:
+            continue  # archive-root marker — ignore, would skip the whole package
+        if any(sib.startswith(root) and "site-packages/" in sib for sib in all_norm):
+            roots.append(root)
+    return tuple(roots)
+
+
+def _archive_has_generated_sdk_marker(members, open_member, probe_limit: int = 60) -> bool:
+    """True if any of the first `probe_limit` python members carries a
+    code-generator provenance banner in its first 4 KB.
+
+    Spec-driven SDK generators (Stainless, OpenAPI Generator, ...) stamp most
+    files with a banner but copy a fixed set of internal support files
+    (`_models.py`, `_utils/_logs.py`, ...) verbatim without one — those still
+    need raw_ip / env boilerplate suppressed, so the signal is computed once
+    per archive and handed to every file's YARA scan. `open_member` returns a
+    readable file object (or None) for a member.
+    """
+    probed = 0
+    for m in members:
+        if probed >= probe_limit:
+            break
+        probed += 1
+        try:
+            fh = open_member(m)
+        except Exception:
+            continue
+        if fh is None:
+            continue
+        try:
+            head = fh.read(4096).decode("utf-8", errors="ignore")
+        except Exception:
+            continue
+        finally:
+            try:
+                fh.close()
+            except Exception:
+                pass
+        if is_generated_api_client(head):
+            return True
+    return False
+
+
+def _is_bundled_env_path(path: str, venv_roots: Tuple[str, ...] = ()) -> bool:
+    """True if ``path`` sits inside a bundled virtualenv or vendored environment
+    directory that must not be treated as first-party package code."""
+    normalized = ("/" + path.replace("\\", "/").strip("/")).lower()
+    if any(sub in normalized for sub in (
+        "/venv/", "/.venv/", "/virtualenv/", "/.tox/", "/.nox/", "/node_modules/",
+    )):
+        return True
+    p = path.replace("\\", "/")
+    return any(root and p.startswith(root) for root in venv_roots)
 
 
 NATIVE_BINARY_EXTENSIONS = (".so", ".dll", ".dylib", ".exe", ".elf")
@@ -563,7 +644,7 @@ class SetupASTVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def inspect_python_code_ast(code_content: str, filename: str, force_install_script: Optional[bool] = None) -> ASTSecurityReport:
+def inspect_python_code_ast(code_content: str, filename: str, force_install_script: Optional[bool] = None, archive_is_generated_sdk: bool = False) -> ASTSecurityReport:
     """
     Parse python source code with AST and separate top-level install hooks from
     runtime logic. `force_install_script` overrides the filename-based inference —
@@ -655,7 +736,9 @@ def inspect_python_code_ast(code_content: str, filename: str, force_install_scri
     has_credential_harvesting = False
     yara_scanner = get_yara_scanner()
     if yara_scanner.is_available:
-        y_flags, y_lines = yara_scanner.scan_file_content(code_content, filename)
+        y_flags, y_lines = yara_scanner.scan_file_content(
+            code_content, filename, archive_is_generated_sdk=archive_is_generated_sdk
+        )
         seen_flag_keys = set()
         for dedup_key, f_text in y_flags:
             if f_text not in flags:
@@ -833,7 +916,17 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
         with tarfile.open(fileobj=io.BytesIO(tarball_bytes), mode="r:*") as tar:
             members = tar.getmembers()
             total_files = len(members)
+            venv_roots = _venv_roots(m.name for m in members)
+            archive_is_generated_sdk = _archive_has_generated_sdk_marker(
+                (m for m in members if m.name.endswith(".py") and 0 < m.size <= 200_000),
+                lambda m: tar.extractfile(m),
+            )
             for member in members:
+                # A virtualenv accidentally shipped in the sdist is not the
+                # package's code — its stock .pth bootstrap files, activate_this.py
+                # and console-script .exe shims would otherwise score as malware.
+                if _is_bundled_env_path(member.name, venv_roots):
+                    continue
                 # Check for startup .pth files
                 if member.name.endswith(".pth"):
                     if member.size > MAX_BYTES_PER_FILE or bytes_scanned >= MAX_TOTAL_BYTES_SCANNED:
@@ -879,7 +972,7 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                             and not _is_test_or_fixture_path(member.name)
                         )
                         if is_top_level_setup or member.name.endswith("__init__.py") or total_source_files <= 5:
-                            report = inspect_python_code_ast(content, member.name, force_install_script=is_top_level_setup)
+                            report = inspect_python_code_ast(content, member.name, force_install_script=is_top_level_setup, archive_is_generated_sdk=archive_is_generated_sdk)
                             all_flags.extend(report.flags)
                             all_lines.extend(report.line_details)
                             max_score = max(max_score, report.composite_threat_score)
@@ -892,7 +985,9 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                         else:
                             yara_scanner = get_yara_scanner()
                             if yara_scanner.is_available:
-                                y_flags, y_lines = yara_scanner.scan_file_content(content, member.name)
+                                y_flags, y_lines = yara_scanner.scan_file_content(
+                                    content, member.name, archive_is_generated_sdk=archive_is_generated_sdk
+                                )
                                 for _, f_text in y_flags:
                                     if f_text not in all_flags:
                                         all_flags.append(f_text)
@@ -949,8 +1044,15 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
             with zipfile.ZipFile(io.BytesIO(tarball_bytes)) as z:
                 infolist = z.infolist()
                 total_files = len(infolist)
+                venv_roots = _venv_roots(i.filename for i in infolist)
+                archive_is_generated_sdk = _archive_has_generated_sdk_marker(
+                    (i for i in infolist if i.filename.endswith(".py") and 0 < i.file_size <= 200_000),
+                    lambda i: z.open(i),
+                )
                 for info in infolist:
                     filename = info.filename
+                    if _is_bundled_env_path(filename, venv_roots):
+                        continue
                     # Check for startup .pth files in wheels
                     if filename.endswith(".pth"):
                         if info.file_size > MAX_BYTES_PER_FILE or bytes_scanned >= MAX_TOTAL_BYTES_SCANNED:
@@ -999,7 +1101,7 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                             loc = len([l for l in content.splitlines() if l.strip() and not l.strip().startswith("#")])
                             total_loc += loc
                             total_code_bytes += len(raw)
-                            report = inspect_python_code_ast(content, filename)
+                            report = inspect_python_code_ast(content, filename, archive_is_generated_sdk=archive_is_generated_sdk)
                             all_flags.extend(report.flags)
                             all_lines.extend(report.line_details)
                             max_score = max(max_score, report.composite_threat_score)

