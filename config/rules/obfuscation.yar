@@ -8,7 +8,14 @@ rule Obfuscation_Dense_Hex_Escapes {
         severity = 70
         description = "Dense string of hexadecimal escape characters commonly used to conceal shellcode or URLs"
     strings:
-        $ = /(\\x[0-9a-fA-F]{2}){8,}/ ascii
+        // Threshold raised from 8 to 16: common binary file-signature checks
+        // (PNG's 8-byte magic number, JPEG, GIF, ...) sit right at 8 and are
+        // completely benign — confirmed false positive on real-world `discord-py`
+        // (`data.startswith(b'\x89\x50\x4e\x47\x0d\x0a\x1a\x0a')`, an image-type
+        // sniff). Real obfuscated payloads run far longer: the confirmed-malicious
+        // sample that motivated this rule ("bettercolor") has runs of 47 and 105
+        // consecutive escapes, comfortably clear of 16 either way.
+        $ = /(\\x[0-9a-fA-F]{2}){16,}/ ascii
     condition:
         any of them
 }
@@ -21,7 +28,16 @@ rule Obfuscation_Layered_Decode_Decompress {
         severity = 80
         description = "Base64 decode immediately piped into compression decompression or bytecode loader"
     strings:
-        $py1 = /b64decode\([^)]+\)\.(decode|strip)/ ascii
+        // NOTE: a `b64decode(...).decode()/.strip()` sub-pattern used to be here
+        // too, but "decode a base64 string into text" is one of the most common,
+        // completely benign idioms in real code (parsing a JWT claim, a webhook
+        // payload, an API response) — confirmed false positives on real-world
+        // `c7n-azure` (decoding an Azure event) and `spotapi` (decoding a JSON
+        // config blob), neither remotely malicious. Removed rather than narrowed:
+        // there's no regex that keeps "flag base64-decoded text" while excluding
+        // ordinary use, because the two are the same thing. The remaining
+        // patterns below are much more specific — decoding *into* a compressed
+        // or marshaled/executable form is genuinely rare outside payload staging.
         $py2 = /zlib\.decompress\(\s*(base64\.)?b64decode/ ascii
         $py3 = /marshal\.loads\(\s*(base64\.)?b64decode/ ascii
         $py4 = /bz2\.decompress\(\s*(base64\.)?b64decode/ ascii

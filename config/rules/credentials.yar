@@ -127,7 +127,10 @@ rule Cred_System {
         label = "System Credentials (/etc/shadow, /etc/passwd)"
         category = "cred"
     strings:
-        $ = /\/etc\/(shadow|passwd)\b/ ascii
+        // A bare mention (docs, syntax-highlighter lexers, error text) is not harvesting;
+        // require an actual read / copy / exfil-style access to the file.
+        $read = /(open|Path|readFile|readFileSync|createReadStream|read_text)\s*\(\s*[rbu]{0,2}['"]\/etc\/(shadow|passwd)\b/ ascii
+        $cmd  = /\b(cat|cp|tar|base64|curl[^\n]{0,60}@)\s+[^\n]{0,20}\/etc\/(shadow|passwd)\b/ ascii
     condition:
         any of them
 }
@@ -170,9 +173,31 @@ rule Cred_IDE_AI_Agent_Hijacking {
         prefix = "CREDENTIAL_PATH_HARVESTING"
         label = "IDE / AI Agent Configuration Hijacking"
         category = "cred"
+        // Confirmed false-positive-prone TWICE in one session, on two
+        // different sub-patterns: `playwright` ($s2, bare "mcp.json", fixed
+        // by narrowing) and `agentdiscover` ($s1, the home-directory-scoped
+        // pattern believed well-designed until this — a legitimate MCP/agent
+        // *discovery* tool's lookup table of known config paths matches $s1
+        // exactly, since it's real code checking for ~/.cursor/mcp.json etc.
+        // by design). This rule cannot currently tell "path referenced to
+        // check for presence" from "path targeted for credential theft" —
+        // LOW until it can (e.g. requiring adjacent read/write-call context).
+        confidence = "LOW"
     strings:
         $s1 = /(~|\$HOME|%USERPROFILE%|%APPDATA%|Library\/Application Support)\/[^\s"'\)]*(\.(vscode|claude|gemini|cursor)|Claude|Cursor)\/(settings|tasks|rules|mcp|claude_desktop_config|\.cursorrules)/ ascii nocase
-        $s2 = /(["'\/]|^)(\.cursorrules|claude_desktop_config\.json|mcp\.json|setup-chrome-mcp|chrome-mcp)(\b|["'\/]|\.[a-zA-Z0-9]+)/ ascii nocase
+        // NOTE: bare `mcp.json` used to be in $s2 too, matched on nothing more
+        // than the literal filename anywhere in the source. Real MCP-integration
+        // tooling legitimately creates or references a project-local
+        // ".vscode/mcp.json" as part of its own first-party functionality — not
+        // in the user's home/profile directory, so $s1 correctly doesn't match
+        // it — and "mcp.json" alone is too generic a filename to mean
+        // "hijacking" on its own. Confirmed false positive on real-world
+        // `playwright` (its legitimate `generateAgents.js` MCP-scaffolding
+        // feature writes exactly this). `claude_desktop_config.json` and
+        // `.cursorrules` stay: unlike a project-local server registry, Claude
+        // Desktop's actual app config is meaningfully more specific and
+        // historically credential-adjacent.
+        $s2 = /(["'\/]|^)(\.cursorrules|claude_desktop_config\.json|setup-chrome-mcp|chrome-mcp)(\b|["'\/]|\.[a-zA-Z0-9]+)/ ascii nocase
     condition:
         $s1 or $s2
 }

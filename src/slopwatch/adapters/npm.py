@@ -171,6 +171,18 @@ class NpmAdapter(BaseRegistryAdapter):
                     author_email = normalize_email_address(author)
                     author_name = author.split("<")[0].strip() if "<" in author else author
 
+                # Publisher accounts: the manifest `author` is often empty on spam/campaign
+                # packages, but the registry always records who published (`_npmUser`) and
+                # who can publish (`maintainers`) — the identity campaigns actually share.
+                maintainers: list = []
+                for acct in [ver_data.get("_npmUser")] + list(data.get("maintainers") or []):
+                    if isinstance(acct, dict) and acct.get("name"):
+                        entry = str(acct["name"]).strip()
+                        if acct.get("email"):
+                            entry += f" <{str(acct['email']).strip().lower()}>"
+                        if entry not in maintainers:
+                            maintainers.append(entry)
+
                 # Fetch download stats from npm API
                 monthly_downloads = 0
                 weekly_downloads = 0
@@ -248,6 +260,7 @@ class NpmAdapter(BaseRegistryAdapter):
                     latest_version=latest_ver,
                     author=author_name,
                     author_email=author_email,
+                    maintainers=maintainers[:10],
                     homepage=ver_data.get("homepage"),
                     description=ver_data.get("description"),
                     tarball_url=tarball_url,

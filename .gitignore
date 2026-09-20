@@ -65,3 +65,4 @@ docs/internal/private/
 .DS_Store
 .idea/
 .vscode/
+data/benign_rule_baseline.json

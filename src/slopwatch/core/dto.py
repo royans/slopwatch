@@ -129,6 +129,9 @@ class PackageMetadata(BaseModel):
     latest_version: str
     author: Optional[str] = None
     author_email: Optional[str] = None
+    # Registry publisher accounts (npm `maintainers` + `_npmUser`), "name" or "name <email>".
+    # Recorded for campaign clustering only; deliberately NOT used in scoring.
+    maintainers: List[str] = Field(default_factory=list)
     homepage: Optional[str] = None
     project_urls: Dict[str, str] = Field(default_factory=dict)
     description: Optional[str] = None

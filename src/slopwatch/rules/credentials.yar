@@ -127,7 +127,10 @@ rule Cred_System {
         label = "System Credentials (/etc/shadow, /etc/passwd)"
         category = "cred"
     strings:
-        $ = /\/etc\/(shadow|passwd)\b/ ascii
+        // A bare mention (docs, syntax-highlighter lexers, error text) is not harvesting;
+        // require an actual read / copy / exfil-style access to the file.
+        $read = /(open|Path|readFile|readFileSync|createReadStream|read_text)\s*\(\s*[rbu]{0,2}['"]\/etc\/(shadow|passwd)\b/ ascii
+        $cmd  = /\b(cat|cp|tar|base64|curl[^\n]{0,60}@)\s+[^\n]{0,20}\/etc\/(shadow|passwd)\b/ ascii
     condition:
         any of them
 }

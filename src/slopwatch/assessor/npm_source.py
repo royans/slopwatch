@@ -16,6 +16,8 @@ dangerous combination was observed" (confirmed-dangerous), applied to JS.
 
 import io
 import ipaddress
+import json
+import posixpath
 import re
 import tarfile
 from typing import Dict, List, Tuple
@@ -281,10 +283,23 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
     total_bytes = 0
     files_scanned = 0
     bytes_scanned = 0
+    file_flag_keys: Dict[str, set] = {}   # member path -> dedup keys it produced
+    root_lifecycle: Dict[str, str] = {}   # root package.json install-time scripts
 
     try:
         with tarfile.open(fileobj=io.BytesIO(tarball_bytes), mode="r:*") as tar:
             all_members = tar.getmembers()
+            for m in all_members:
+                if m.isfile() and m.name.count("/") == 1 and m.name.endswith("/package.json") and m.size < 200_000:
+                    pj = tar.extractfile(m)
+                    try:
+                        scripts = json.loads(pj.read().decode("utf-8", errors="ignore")).get("scripts", {}) if pj else {}
+                        root_lifecycle = {
+                            h: c for h, c in scripts.items()
+                            if h in ("preinstall", "install", "postinstall") and isinstance(c, str)
+                        }
+                    except Exception:
+                        root_lifecycle = {}
             # Check for unexpected native binaries
             for m in all_members:
                 if m.isfile() and any(m.name.endswith(ext) for ext in NATIVE_BINARY_EXTENSIONS):
@@ -324,6 +339,7 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
                 total_loc += len([l for l in content.splitlines() if l.strip()])
 
                 flags, lines = _scan_file_content(content, member.name)
+                file_flag_keys[member.name] = {k for k, _ in flags}
                 for key, text in flags:
                     occurrence_counts[key] = occurrence_counts.get(key, 0) + 1
                     flag_by_key.setdefault(key, text)
@@ -338,6 +354,29 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
             composite_threat_score=15,
             verdict=ThreatVerdict.SUSPICIOUS,
         )
+
+    # Install-time download-and-run: a lifecycle hook that executes a bundled script which
+    # itself makes network calls AND executes / decodes / reads the environment. Manifest-only
+    # analysis can't see this (the hook is just `node scripts/x.js`), and the source scan can't
+    # tell x.js runs at install. Mirrors the PyPI INSTALL_TIME_NETWORK_SOCKET logic.
+    for hook, cmd in root_lifecycle.items():
+        for target in re.findall(r"(?:node|sh|bash)\s+(?:--?\S+\s+)*\.?/?([\w@./-]+\.(?:js|cjs|mjs))", cmd):
+            candidates = [n for n in file_flag_keys if posixpath.normpath(n.split("/", 1)[-1]) == posixpath.normpath(target)]
+            for name in candidates:
+                keys = file_flag_keys[name]
+                has_net = any(k.startswith("SOURCE_CODE_NETWORK_CALL") for k in keys)
+                has_payload = any(k.startswith((
+                    "SOURCE_CODE_DYNAMIC_EXECUTION", "SOURCE_CODE_ENCODED_PAYLOAD",
+                    "SOURCE_CODE_ENV_VARS_ACCESS", "EXFILTRATION_DESTINATION_DETECTED",
+                    "SOURCE_CODE_DYNAMIC_CODE_LOADER",
+                )) for k in keys)
+                if has_net and has_payload:
+                    key = "INSTALL_TIME_NETWORK_SOCKET"
+                    flag_by_key[key] = (
+                        f"INSTALL_TIME_NETWORK_SOCKET: '{hook}' script runs {name}, which makes network "
+                        f"calls and executes/decodes/reads secrets"
+                    )
+                    line_by_key[key] = f"package.json:scripts.{hook} -> {name} (network + execution at install time)"
 
     all_flags: List[str] = []
     for key, text in flag_by_key.items():
@@ -354,6 +393,8 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
     if any(f.startswith("SOURCE_CODE_CONFIRMED_STEALER") for f in all_flags):
         threat_score += 80
     if any(f.startswith("SOURCE_CODE_DYNAMIC_CODE_LOADER") for f in all_flags):
+        threat_score += 45
+    if any(f.startswith("INSTALL_TIME_NETWORK_SOCKET") for f in all_flags):
         threat_score += 45
     if any(f.startswith("EXFILTRATION_DESTINATION_DETECTED") for f in all_flags):
         threat_score += 40
@@ -393,6 +434,7 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
             "SOURCE_CODE_DYNAMIC_CODE_LOADER",
             "SOURCE_CODE_PERSISTENT_BACKDOOR",
             "SOURCE_CODE_EVASIVE_PAYLOAD",
+            "INSTALL_TIME_NETWORK_SOCKET",
         )) or "REVERSE_SHELL" in f
         for f in all_flags
     )

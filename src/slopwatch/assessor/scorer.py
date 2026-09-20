@@ -1855,6 +1855,7 @@ class ProgressiveThreatEvaluator:
                     "capability": candidate.capability_token,
                     "framework": candidate.framework_token,
                     "author_email": meta.author_email,
+                    "maintainers": list(getattr(meta, "maintainers", []) or []),
                     "homepage": meta.homepage,
                     "flags": ast_report.flags,
                     "line_details": ast_report.line_details,

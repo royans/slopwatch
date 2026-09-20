@@ -249,7 +249,10 @@ rule Exec_Reverse_Shell_Socket {
     strings:
         $dev_tcp  = /\/dev\/tcp\/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\/[0-9]{1,5}/ ascii
         $nc_sh    = /\b(nc|ncat|netcat)\s+(-[a-zA-Z0-9]*e\s+|.*-e\s+)(\/bin\/)?(ba)?sh\b/ ascii nocase
-        $py_dup2  = /os\.dup2\s*\(\s*[a-zA-Z0-9_.]+\.fileno\s*\(\s*\)/ ascii
+        // Must be a socket-named fd dup'd onto stdio (0-2 or a loop var). A bare
+        // `os.dup2(<anything>.fileno(), ...)` is ordinary stdout/stderr capture
+        // (pytest capture, click.testing) — it false-positived on both.
+        $py_dup2  = /os\.dup2\s*\(\s*(s|sk|sock|socket|sockobj|conn|connection|client|cli|remote|rs)\.fileno\s*\(\s*\)\s*,\s*([0-2]|fd|i|n)\s*\)/ ascii
         $node_net = /net\.(createConnection|Socket)\b[^;\n]{0,80}\.pipe\b/ ascii
     condition:
         any of them

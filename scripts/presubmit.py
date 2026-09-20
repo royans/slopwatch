@@ -34,6 +34,7 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^scripts/presubmit\.py$",
     r"^scripts/install_hooks\.sh$",
     r"^scripts/release\.py$",
+    r"^scripts/rule_scorecard\.py$",
     r"^\.githooks/pre-commit$",
     r"^\.pre-commit-config\.yaml$",
     r"^pyproject\.toml$",

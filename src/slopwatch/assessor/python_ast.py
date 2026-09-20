@@ -1136,6 +1136,11 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
         has_pth_execution
         or any(
             (f.startswith("INSTALL_TIME_EXECUTION") and "Custom Install Hook" not in f)
+            # A bare "Custom Install Hook" is usually a benign `test`/`build` command class, but a
+            # cmdclass override of install/develop/egg_info (SUPPLY_CHAIN_EXECUTION_HOOK) that also
+            # runs code is the classic malicious-setup.py shape — golden samples 0wneg, a1rn, adanbu
+            # regressed to BENIGN when this became unconditional (f857433).
+            or (f.startswith("SUPPLY_CHAIN_EXECUTION_HOOK") and "Custom Install Class Override" in f)
             or f.startswith((
                 "INSTALL_TIME_CMDCLASS_OVERRIDE",
                 "INSTALL_TIME_NETWORK_SOCKET",
