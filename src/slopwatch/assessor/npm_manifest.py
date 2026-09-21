@@ -5,6 +5,7 @@ Inspects package.json metadata and lifecycle installation scripts (preinstall,
 install, postinstall) for malicious shell execution and download cradles.
 """
 
+import re
 from typing import Dict, Any, List
 from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
 from slopwatch.assessor.yara_engine import get_yara_scanner
@@ -25,6 +26,12 @@ DANGEROUS_COMMAND_PATTERNS = [
     ("node -e require('http", 40),
     ("node -e require(\"http", 40),
 ]
+
+# `bash install.sh` / `sh ./scripts/setup.sh`: running a script that ships in the package is how thousands of
+# legitimate installers work; it says nothing by itself (the script's own content is scanned separately).
+# Only the plain "<shell> <local .sh file>" form is neutral. A shell with flags (-c, -i), a pipe, a redirect,
+# a URL or a network tool still matches the dangerous patterns below.
+_PLAIN_LOCAL_SCRIPT = re.compile(r"\b(?:ba)?sh\s+(?:\./)?[\w@.\-]+(?:/[\w@.\-]+)*\.(?:ba)?sh\b(?!\s*(?:\||>|&(?!&)))")
 
 
 def analyze_npm_package_manifest(manifest_data: Dict[str, Any], package_name: str) -> ASTSecurityReport:
@@ -59,7 +66,7 @@ def analyze_npm_package_manifest(manifest_data: Dict[str, Any], package_name: st
             flags.append(f"LIFECYCLE_SCRIPT: '{hook}' -> '{cmd}'")
             threat_score += 25  # Unnecessary install hook in utility library
 
-            cmd_lower = cmd.lower()
+            cmd_lower = _PLAIN_LOCAL_SCRIPT.sub(" ", cmd.lower())
             for pattern, pts in DANGEROUS_COMMAND_PATTERNS:
                 if pattern in cmd_lower:
                     threat_score += pts
