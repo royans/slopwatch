@@ -8,10 +8,10 @@ with integrated local disk caching for minimal bandwidth consumption.
 
 import json
 from datetime import datetime, timezone
-from typing import Set, List, Optional
+from typing import Dict, Set, List, Optional
 import aiohttp
 
-from slopwatch.adapters.base import BaseRegistryAdapter
+from slopwatch.adapters.base import BaseRegistryAdapter, RegistryChange, RegistryChangesPage
 from slopwatch.core.dto import (
     Ecosystem,
     PackageCreationEvent,
@@ -134,6 +134,48 @@ class NpmAdapter(BaseRegistryAdapter):
                         )
 
         return events
+
+    async def fetch_changes_tip(self) -> str:
+        """Current head sequence of the npm changes stream (one tiny request)."""
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with session.get(f"{self.changes_url}?descending=true&limit=1") as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"npm _changes tip: HTTP {resp.status}")
+                data = await resp.json(content_type=None)
+        return str(data.get("last_seq"))
+
+    async def fetch_changes_since(self, since: str, limit: int = 2000) -> RegistryChangesPage:
+        """
+        Read up to `limit` changes AFTER sequence `since`, oldest first, grouped per package.
+
+        Unlike fetch_recent_creations (a descending window of the newest N entries, which a busy
+        stream overruns between cycles), this is cursor-based: `last_seq` is where the next call
+        resumes. A change whose revision starts with "1-" is the package's creation (is_new).
+        """
+        url = f"{self.changes_url}?since={int(since)}&limit={int(limit)}"
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"npm _changes since={since}: HTTP {resp.status}")
+                data = await resp.json(content_type=None)
+        by_name: Dict[str, RegistryChange] = {}
+        for r in data.get("results", []):
+            name = r.get("id")
+            if not name or name.startswith("_design/"):
+                continue
+            seq = int(r.get("seq"))
+            revs = [c.get("rev", "") for c in r.get("changes", [])]
+            norm = self.normalize_name(name)
+            ch = by_name.get(norm)
+            if ch is None:
+                ch = by_name[norm] = RegistryChange(name=norm, first_seq=seq, last_seq=seq)
+            ch.last_seq = max(ch.last_seq, seq)
+            ch.first_seq = min(ch.first_seq, seq)
+            ch.is_new = ch.is_new or any(rv.startswith("1-") for rv in revs)
+            ch.deleted = bool(r.get("deleted"))
+        return RegistryChangesPage(changes=sorted(by_name.values(), key=lambda c: c.first_seq),
+                              last_seq=str(data.get("last_seq") or since),
+                              raw_count=len(data.get("results", [])))
 
     async def inspect_package_metadata(self, package_name: str) -> Optional[PackageMetadata]:
         """Query npm registry JSON API for package metadata, using local cache when available."""

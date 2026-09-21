@@ -11,10 +11,10 @@ import asyncio
 import xmlrpc.client
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from typing import Set, List, Optional
+from typing import Dict, Set, List, Optional
 import aiohttp
 
-from slopwatch.adapters.base import BaseRegistryAdapter
+from slopwatch.adapters.base import BaseRegistryAdapter, RegistryChange, RegistryChangesPage
 from slopwatch.core.dto import (
     Ecosystem,
     PackageCreationEvent,
@@ -136,6 +136,53 @@ class PyPIAdapter(BaseRegistryAdapter):
                     pass
 
         return events
+
+    async def _xmlrpc(self, method: str, *params):
+        xml_req = xmlrpc.client.dumps(params, method)
+        headers = {"Content-Type": "text/xml", "User-Agent": "SlopWatch/1.0 (+https://github.com/royans/slopwatch)"}
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with session.post(self.json_api_base, data=xml_req, headers=headers) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"PyPI XML-RPC {method}: HTTP {resp.status}")
+                out, _ = xmlrpc.client.loads(await resp.read())
+        return out[0] if out else None
+
+    async def fetch_changes_tip(self) -> str:
+        """Current head serial of PyPI's event log (one tiny request)."""
+        return str(await self._xmlrpc("changelog_last_serial"))
+
+    async def fetch_changes_since(self, since: str, limit: int = 5000) -> RegistryChangesPage:
+        """
+        Read up to `limit` event-log entries AFTER serial `since` (oldest first), grouped per project.
+
+        Unlike rss/packages.xml (a fixed-size window of new projects only) this is cursor-based and also
+        carries new releases with their version: action "create" = new project, "new release" = a version.
+        """
+        events = await self._xmlrpc("changelog_since_serial", int(since)) or []
+        events = events[:int(limit)]
+        by_name: Dict[str, RegistryChange] = {}
+        for ev in events:
+            # ev: [name, version, timestamp, action, serial]
+            if len(ev) < 5 or not ev[0]:
+                continue
+            name, version, ts, action, serial = self.normalize_name(str(ev[0])), ev[1], ev[2], str(ev[3]), int(ev[4])
+            ch = by_name.get(name)
+            if ch is None:
+                ch = by_name[name] = RegistryChange(name=name, first_seq=serial, last_seq=serial, is_release=False)
+            ch.last_seq = max(ch.last_seq, serial)
+            ch.first_seq = min(ch.first_seq, serial)
+            if action == "create":
+                ch.is_new = True
+                if isinstance(ts, int) and ts > 0:
+                    ch.created_at = datetime.fromtimestamp(ts, tz=timezone.utc)
+            elif action == "new release":
+                ch.is_release = True
+                ch.version = str(version) if version else ch.version
+            elif action.startswith("remove project"):
+                ch.deleted = True
+        last = str(events[-1][4]) if events and len(events[-1]) >= 5 else str(since)
+        return RegistryChangesPage(changes=sorted(by_name.values(), key=lambda c: c.first_seq),
+                                   last_seq=last, raw_count=len(events))
 
     async def fetch_download_stats(self, session: aiohttp.ClientSession, package_name: str) -> tuple[int, int, int]:
         """Fetch real-world download counts (monthly, weekly, daily) from PyPI Stats API with rate-limit backoff."""

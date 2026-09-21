@@ -3,6 +3,8 @@ Sentinel Base Registry Adapter Interface.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Set, List, Optional
 from slopwatch.core.dto import (
     Ecosystem,
@@ -10,6 +12,26 @@ from slopwatch.core.dto import (
     PackageMetadata,
     ASTSecurityReport,
 )
+
+
+@dataclass
+class RegistryChange:
+    """All changes to one package inside a fetched slice of a registry change stream."""
+    name: str
+    first_seq: int
+    last_seq: int
+    is_new: bool = False             # the package was created in this slice
+    deleted: bool = False
+    is_release: bool = True          # a new release/revision (False: e.g. only extra files for an old release)
+    version: Optional[str] = None    # newest release seen, when the stream carries it (PyPI); npm does not
+    created_at: Optional[datetime] = None  # registry-side creation time, when the stream carries it
+
+
+@dataclass
+class RegistryChangesPage:
+    changes: List[RegistryChange]
+    last_seq: str                    # resume here next time
+    raw_count: int                   # raw stream entries consumed (a full page means more remain)
 
 
 class BaseRegistryAdapter(ABC):
