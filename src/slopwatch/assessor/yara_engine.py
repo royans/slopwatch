@@ -16,6 +16,8 @@ from pathlib import Path
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
+from slopwatch.assessor.comments import is_in_comment
+
 logger = logging.getLogger("slopwatch.assessor.yara")
 
 try:
@@ -29,6 +31,10 @@ except ImportError:  # pragma: no cover - defensive fallback
 PROXIMITY_WINDOW_CHARS = 400
 COMPOSITE_PROXIMITY_WINDOW_CHARS = 400
 _IP_REGEX = re.compile(r"([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})")
+
+
+# Credential-path rules whose matches inside source comments (docs/examples) are ignored.
+_COMMENT_INSENSITIVE_RULES = frozenset({"Cred_SSH_Private_Keys", "Cred_SSH_Directory"})
 
 
 def is_minified_content(content: str) -> bool:
@@ -289,13 +295,18 @@ class YaraPatternScanner:
 
             # Standard rules
             first_offset: Optional[int] = None
-            for sm in match.strings:
-                for inst in sm.instances:
-                    offset = inst.offset
-                    if first_offset is None or offset < first_offset:
-                        first_offset = offset
-                    if category in positions:
-                        positions[category].append(offset)
+            instances = [inst for sm in match.strings for inst in sm.instances]
+            if match.rule in _COMMENT_INSENSITIVE_RULES:
+                # A doc-comment usage example (`ssh -i ~/.ssh/id_ed25519`) is not code that reads the key.
+                instances = [i for i in instances if not is_in_comment(content, i.offset, filename)]
+                if not instances:
+                    continue
+            for inst in instances:
+                offset = inst.offset
+                if first_offset is None or offset < first_offset:
+                    first_offset = offset
+                if category in positions:
+                    positions[category].append(offset)
 
             if match.rule == "SupplyChain_NPM_Lifecycle_Command":
                 # Check if the matched command is merely diagnostic text inside console.error/console.log

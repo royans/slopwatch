@@ -24,6 +24,7 @@ from typing import Dict, List, Tuple
 
 from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
 from slopwatch.assessor.yara_engine import get_yara_scanner
+from slopwatch.assessor.comments import is_in_comment
 from slopwatch.core.confidence import distinct_signal_confidences, passes_confidence_gate
 
 SOURCE_FILE_EXTENSIONS = (".js", ".mjs", ".cjs", ".ts")
@@ -189,6 +190,9 @@ NATIVE_BINARY_EXTENSIONS = (".so", ".dll", ".dylib", ".exe", ".elf")
 PROXIMITY_WINDOW_CHARS = 400
 
 
+_COMMENT_INSENSITIVE_LABELS = frozenset({"SSH Private Keys (~/.ssh)", "SSH Directory / Private Keys (~/.ssh)"})
+
+
 def _scan_file_content(content: str, filename: str) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
     """
     Scan one file's text for dangerous JS runtime patterns.
@@ -214,7 +218,11 @@ def _scan_file_content(content: str, filename: str) -> Tuple[List[Tuple[str, str
 
     def _scan_group(patterns, prefix, position_list):
         for pattern, label in patterns:
-            m = pattern.search(content)
+            if label in _COMMENT_INSENSITIVE_LABELS:
+                # Same rule as the YARA path: a usage example in a comment is not code reading the key.
+                m = next((x for x in pattern.finditer(content) if not is_in_comment(content, x.start(), filename)), None)
+            else:
+                m = pattern.search(content)
             if m:
                 position_list.append(m.start())
                 lineno = content.count("\n", 0, m.start()) + 1
