@@ -305,8 +305,13 @@ class NpmAdapter(BaseRegistryAdapter):
                 manifest_report = analyze_npm_package_manifest(data, norm_name)
 
                 dist_tags = data.get("dist-tags", {})
-                latest_ver = version or dist_tags.get("latest", "0.1.0")
                 versions = data.get("versions", {})
+                # None / "latest" / a dist-tag name resolve through dist-tags; anything else is an exact version.
+                requested = version or "latest"
+                latest_ver = dist_tags.get(requested, "0.1.0" if requested == "latest" else requested)
+                if requested != "latest" and latest_ver not in versions:
+                    manifest_report.flags.append("VERSION_NOT_FOUND")
+                    return manifest_report
                 ver_data = versions.get(latest_ver, data)
                 tarball_url = ver_data.get("dist", {}).get("tarball")
                 if not tarball_url:

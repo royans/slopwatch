@@ -112,7 +112,9 @@ class PyPIAdapter(BaseRegistryAdapter):
                         if not parts:
                             continue
                         raw_pkg = parts[0]
-                        version = parts[1] if len(parts) > 1 else "0.1.0"
+                        # packages.xml titles read "<name> added to PyPI" (no version); the
+                        # word after the name is not a version. "latest" = whatever is current.
+                        version = parts[1] if len(parts) > 1 and parts[1] != "added" else "latest"
 
                         pub_date = datetime.now(timezone.utc)
                         if pub_date_str:
@@ -371,6 +373,18 @@ class PyPIAdapter(BaseRegistryAdapter):
                 return meta
 
 
+    async def _version_sdist_url(self, session: aiohttp.ClientSession, package_name: str, version: str) -> Optional[str]:
+        """sdist (else first file) URL of one specific release, or None if that release does not exist."""
+        url = f"{self.json_api_base}/{package_name}/{version}/json"
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                return None
+            urls = (await resp.json()).get("urls", [])
+        for u in urls:
+            if u.get("packagetype") == "sdist":
+                return u.get("url")
+        return urls[0].get("url") if urls else None
+
     async def download_and_inspect_payload(self, package_name: str, version: Optional[str] = None) -> ASTSecurityReport:
         """Download PyPI tarball and perform static AST analysis in-memory with zero disk clutter."""
         meta = await self.inspect_package_metadata(package_name)
@@ -380,7 +394,8 @@ class PyPIAdapter(BaseRegistryAdapter):
                 composite_threat_score=30,
             )
 
-        pkg_version = version or meta.latest_version
+        pkg_version = version if version and version != "latest" else meta.latest_version
+        tarball_url = meta.tarball_url
 
         # 1. Check local archive cache if present
         cached_bytes = self.cache.get_cached_payload("pypi", package_name, pkg_version)
@@ -389,7 +404,12 @@ class PyPIAdapter(BaseRegistryAdapter):
 
         # 2. Download from PyPI into memory buffer (ephemeral bytes analyzed via io.BytesIO)
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
-            async with session.get(meta.tarball_url) as resp:
+            if pkg_version != meta.latest_version:
+                # A specific (non-latest) release was requested: resolve THAT release's sdist.
+                tarball_url = await self._version_sdist_url(session, package_name, pkg_version)
+                if tarball_url is None:
+                    return ASTSecurityReport(flags=["VERSION_NOT_FOUND"], composite_threat_score=0)
+            async with session.get(tarball_url) as resp:
                 if resp.status != 200:
                     return ASTSecurityReport(
                         flags=["TARBALL_DOWNLOAD_FAILED"],

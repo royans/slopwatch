@@ -1297,7 +1297,20 @@ class ProgressiveThreatEvaluator:
                 )
 
             # ==================== 4. AST CODE ANALYSIS & WEAPONIZATION (+25 to +45 pts) ====================
-            ast_report = await adapter.download_and_inspect_payload(pkg_name, meta.latest_version)
+            # `version` pins the artifact to analyse (install-guard version scoring); the
+            # name-level signals above still describe the package as a whole.
+            target_version = version or meta.latest_version
+            ast_report = await adapter.download_and_inspect_payload(pkg_name, target_version)
+            if version and "VERSION_NOT_FOUND" in ast_report.flags:
+                return SquatDetection(
+                    candidate_id=candidate.candidate_id,
+                    ecosystem=ecosystem,
+                    package_name=pkg_name,
+                    threat_score=0,
+                    release_version=version,
+                    analysis_details={"verdict_reason": "VERSION_NOT_FOUND", "scored_version": version},
+                    verdict=ThreatVerdict.BENIGN_COMMUNITY,
+                )
             has_malware_hooks = False
 
             if ast_report.flags:
@@ -1839,7 +1852,7 @@ class ProgressiveThreatEvaluator:
                 ecosystem=ecosystem,
                 package_name=pkg_name,
                 author_username=meta.author,
-                release_version=meta.latest_version,
+                release_version=target_version,
                 published_at=first_pub,
                 first_published_at=first_pub,
                 latest_release_at=latest_rel,
@@ -1870,6 +1883,7 @@ class ProgressiveThreatEvaluator:
                     "major_version": major_ver,
                     "is_inflated_version_risk": is_inflated_version_risk,
                     "has_internal_keyword": has_internal_keyword,
+                    "scored_version": target_version,
                     "version_metrics": {
                         "latest_version": meta.latest_version,
                         "major_version": major_ver,
