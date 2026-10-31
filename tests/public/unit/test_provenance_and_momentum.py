@@ -42,6 +42,8 @@ async def test_provenance_boosts_domain_trust_and_emits_signal(mocker):
         author_email="founder@startup-ai.io",
         has_provenance=True,
         provenance_type="pypi_trusted_publisher_oidc",
+        provenance_repository="github.com/startup-ai/startup-ai-core",
+        declared_repository="github.com/startup-ai/startup-ai-core",
         monthly_downloads=500,
     )
 

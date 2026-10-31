@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Dict, Set, List, Optional
 import aiohttp
 
+from slopwatch.core.provenance import declared_pypi_repo, fetch_pypi_provenance
 from slopwatch.adapters.base import BaseRegistryAdapter, RegistryChange, RegistryChangesPage
 from slopwatch.core.dto import (
     Ecosystem,
@@ -254,7 +255,8 @@ class PyPIAdapter(BaseRegistryAdapter):
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             # Check local cache first (7-day TTL), but ensure it contains valid historical first_published_at
             cached_data = self.cache.get_cached_metadata("pypi", norm_name, ttl_seconds=604800.0)
-            if cached_data and cached_data.get("first_published_at"):
+            # Entries cached before provenance_repository existed never had real provenance checked.
+            if cached_data and cached_data.get("first_published_at") and "provenance_repository" in cached_data:
                 # If cached record has 0 downloads, refresh from PyPI Stats API
                 if cached_data.get("monthly_downloads", 0) == 0:
                     m, w, d = await self.fetch_download_stats(session, norm_name)
@@ -377,20 +379,19 @@ class PyPIAdapter(BaseRegistryAdapter):
                 elif is_inactive:
                     deprecation_reason = "Development Status :: 7 - Inactive"
 
-                # Check PyPI provenance (Trusted Publishing / Sigstore / GitHub Actions OIDC)
+                # PyPI provenance lives in the Integrity API; the JSON API has no provenance
+                # field (the old `u.get("provenance")` check could never be true).
                 has_provenance = False
                 provenance_type = None
-                for u in urls:
-                    if u.get("provenance") or u.get("has_sigstore"):
-                        has_provenance = True
+                provenance_repository = None
+                prov_files = list(urls) or (list(releases.get(version) or []) if version else [])
+                if version and prov_files and prov_files[0].get("filename"):
+                    has_provenance, provenance_repository = await fetch_pypi_provenance(
+                        session, norm_name, version, prov_files[0]["filename"]
+                    )
+                    if has_provenance:
                         provenance_type = "pypi_trusted_publisher_oidc"
-                        break
-                if not has_provenance and version and version in releases:
-                    for u in releases[version]:
-                        if u.get("provenance") or u.get("has_sigstore"):
-                            has_provenance = True
-                            provenance_type = "pypi_trusted_publisher_oidc"
-                            break
+                declared_repository = declared_pypi_repo(info.get("project_urls"), info.get("home_page"))
 
                 meta = PackageMetadata(
                     ecosystem=Ecosystem.PYPI,
@@ -414,6 +415,8 @@ class PyPIAdapter(BaseRegistryAdapter):
                     deprecation_reason=deprecation_reason,
                     has_provenance=has_provenance,
                     provenance_type=provenance_type,
+                    provenance_repository=provenance_repository,
+                    declared_repository=declared_repository,
                 )
 
                 self.cache.save_cached_metadata("pypi", norm_name, meta.model_dump(mode="json"))

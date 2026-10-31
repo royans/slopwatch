@@ -148,6 +148,11 @@ class PackageMetadata(BaseModel):
     deprecation_reason: Optional[str] = None
     has_provenance: bool = False
     provenance_type: Optional[str] = None
+    # `github.com/<owner>/<repo>` the signed provenance says the release was built from
+    # (None when there is no provenance, or the publisher attests none). See core/provenance.py.
+    provenance_repository: Optional[str] = None
+    # `github.com/<owner>/<repo>` the package *claims* (npm `repository`, PyPI project_urls). Self-declared.
+    declared_repository: Optional[str] = None
 
 
 

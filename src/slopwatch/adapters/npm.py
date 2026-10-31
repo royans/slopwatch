@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Dict, Set, List, Optional
 import aiohttp
 
+from slopwatch.core.provenance import fetch_npm_provenance_repo, normalize_repo
 from slopwatch.adapters.base import BaseRegistryAdapter, RegistryChange, RegistryChangesPage
 from slopwatch.core.dto import (
     Ecosystem,
@@ -182,7 +183,9 @@ class NpmAdapter(BaseRegistryAdapter):
         norm_name = self.normalize_name(package_name)
 
         cached_data = self.cache.get_cached_metadata("npm", norm_name, ttl_seconds=604800.0)
-        if cached_data:
+        # Entries cached before provenance_repository existed carry the old, wrong
+        # has_provenance (set from registry `signatures`, present on every package): refetch.
+        if cached_data and "provenance_repository" in cached_data:
             return PackageMetadata(**cached_data)
 
         encoded_name = norm_name.replace("/", "%2F") if "/" in norm_name else norm_name
@@ -292,9 +295,15 @@ class NpmAdapter(BaseRegistryAdapter):
                     if not deprecation_reason:
                         deprecation_reason = "All versions deprecated"
 
-                # Check npm provenance (SLSA / Sigstore / GitHub Actions OIDC)
-                has_provenance = bool(dist.get("attestations")) or bool(dist.get("signatures"))
+                # npm provenance = SLSA attestations. `dist.signatures` is the registry's own
+                # signature, present on every tarball, and proves nothing about the source.
+                attestations = dist.get("attestations") or {}
+                has_provenance = bool(attestations)
                 provenance_type = "npm_slsa_sigstore" if has_provenance else None
+                provenance_repository = None
+                if has_provenance and attestations.get("url"):
+                    provenance_repository = await fetch_npm_provenance_repo(session, attestations["url"])
+                declared_repository = normalize_repo(ver_data.get("repository") or data.get("repository"))
 
                 meta = PackageMetadata(
                     ecosystem=Ecosystem.NPM,
@@ -317,6 +326,8 @@ class NpmAdapter(BaseRegistryAdapter):
                     deprecation_reason=deprecation_reason,
                     has_provenance=has_provenance,
                     provenance_type=provenance_type,
+                    provenance_repository=provenance_repository,
+                    declared_repository=declared_repository,
                 )
 
                 self.cache.save_cached_metadata("npm", norm_name, meta.model_dump(mode="json"))
