@@ -26,6 +26,10 @@ from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
 from slopwatch.assessor.yara_engine import get_yara_scanner
 from slopwatch.assessor.comments import is_in_comment
 from slopwatch.core.confidence import distinct_signal_confidences, passes_confidence_gate
+from slopwatch.assessor import js_ast
+from slopwatch.assessor.agent_files import (
+    AGENT_INJECTION_PREFIX, AGENT_INJECTION_SCORE, MAX_AGENT_FILE_BYTES, is_agent_instruction_file, scan_agent_file,
+)
 
 SOURCE_FILE_EXTENSIONS = (".js", ".mjs", ".cjs", ".ts")
 SKIP_PATH_SUBSTRINGS = (
@@ -179,6 +183,21 @@ GYP_WEAPONIZED_PATTERNS: List[Tuple[re.Pattern, str]] = [
 
 NATIVE_BINARY_EXTENSIONS = (".so", ".dll", ".dylib", ".exe", ".elf")
 
+# Data-flow findings from js_ast (tree-sitter). Absent when slopwatch[js] is not installed.
+JS_FLOW_SCORES = {
+    "JS_DATAFLOW_SECRET_EXFIL": 80,
+    "JS_DATAFLOW_REMOTE_CODE_EXEC": 70,
+    "JS_SHELL_DOWNLOAD_CRADLE": 70,
+    "JS_DATAFLOW_DECODE_TO_EXEC": 60,
+    "JS_DATAFLOW_HOST_RECON_BEACON": 35,
+}
+JS_FLOW_CONFIRMED = (
+    "JS_DATAFLOW_SECRET_EXFIL", "JS_DATAFLOW_REMOTE_CODE_EXEC",
+    "JS_SHELL_DOWNLOAD_CRADLE", "JS_DATAFLOW_DECODE_TO_EXEC",
+)
+JS_AST_EXTENSIONS = (".js", ".mjs", ".cjs")
+
+
 # How close (in characters) an execution primitive and a decode/network call must
 # appear to count as plausibly the same statement/chain — e.g. `fetch(x).then(r =>
 # eval(r))` or `eval(atob(x))`. A bare "both patterns exist somewhere in this file"
@@ -292,6 +311,7 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
     files_scanned = 0
     bytes_scanned = 0
     file_flag_keys: Dict[str, set] = {}   # member path -> dedup keys it produced
+    js_ast_on = js_ast.available()
     root_lifecycle: Dict[str, str] = {}   # root package.json install-time scripts
 
     try:
@@ -327,6 +347,18 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
                                 flag_by_key[key] = f"GYP_WEAPONIZED_EXECUTION: '{label}' detected in {m.name}"
                                 line_by_key[key] = f"{m.name} -> {label} (node-gyp execution hook)"
 
+            # Agent-facing instruction files (SKILL.md, CLAUDE.md, .cursorrules, mcp.json, ...)
+            for m in all_members:
+                if m.isfile() and m.size <= MAX_AGENT_FILE_BYTES and is_agent_instruction_file(m.name):
+                    af = tar.extractfile(m)
+                    if af:
+                        a_flags, a_lines = scan_agent_file(af.read().decode("utf-8", errors="ignore"), m.name)
+                        for key, text in a_flags:
+                            occurrence_counts[key] = occurrence_counts.get(key, 0) + 1
+                            flag_by_key.setdefault(key, text)
+                        for key, text in a_lines:
+                            line_by_key.setdefault(key, text)
+
             members = [m for m in all_members if m.isfile() and m.name.endswith(SOURCE_FILE_EXTENSIONS)]
             for member in members:
                 if _is_test_or_fixture_path(member.name):
@@ -347,6 +379,12 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
                 total_loc += len([l for l in content.splitlines() if l.strip()])
 
                 flags, lines = _scan_file_content(content, member.name)
+                if js_ast_on and member.name.endswith(JS_AST_EXTENSIONS):
+                    flow = js_ast.analyze_js_source(content, member.name)
+                    if flow.analysed:
+                        for prefix, detail in flow.flows:
+                            flags.append((prefix, f"{prefix}: {detail}"))
+                            lines.append((prefix, f"{member.name} -> {detail}"))
                 file_flag_keys[member.name] = {k for k, _ in flags}
                 for key, text in flags:
                     occurrence_counts[key] = occurrence_counts.get(key, 0) + 1
@@ -372,11 +410,13 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
             candidates = [n for n in file_flag_keys if posixpath.normpath(n.split("/", 1)[-1]) == posixpath.normpath(target)]
             for name in candidates:
                 keys = file_flag_keys[name]
-                has_net = any(k.startswith("SOURCE_CODE_NETWORK_CALL") for k in keys)
+                has_net = any(k.startswith((
+                    "SOURCE_CODE_NETWORK_CALL", "JS_DATAFLOW_SECRET_EXFIL", "JS_DATAFLOW_HOST_RECON_BEACON",
+                )) for k in keys)
                 has_payload = any(k.startswith((
                     "SOURCE_CODE_DYNAMIC_EXECUTION", "SOURCE_CODE_ENCODED_PAYLOAD",
                     "SOURCE_CODE_ENV_VARS_ACCESS", "EXFILTRATION_DESTINATION_DETECTED",
-                    "SOURCE_CODE_DYNAMIC_CODE_LOADER",
+                    "SOURCE_CODE_DYNAMIC_CODE_LOADER", "JS_DATAFLOW", "JS_SHELL",
                 )) for k in keys)
                 if has_net and has_payload:
                     key = "INSTALL_TIME_NETWORK_SOCKET"
@@ -424,6 +464,12 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
         threat_score += 15
     if any(f.startswith("SOURCE_CODE_NETWORK_CALL") for f in all_flags):
         threat_score += 10
+    if any(f.startswith(AGENT_INJECTION_PREFIX) for f in all_flags):
+        threat_score += AGENT_INJECTION_SCORE
+    for prefix, pts in JS_FLOW_SCORES.items():
+        if any(f.startswith(prefix) for f in all_flags):
+            threat_score += pts
+
     threat_score = min(100, threat_score)
 
     is_empty_stub = total_source_files == 0 and total_loc == 0
@@ -443,6 +489,7 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
             "SOURCE_CODE_PERSISTENT_BACKDOOR",
             "SOURCE_CODE_EVASIVE_PAYLOAD",
             "INSTALL_TIME_NETWORK_SOCKET",
+            *JS_FLOW_CONFIRMED,
         )) or "REVERSE_SHELL" in f
         for f in all_flags
     )
@@ -462,8 +509,11 @@ def analyze_npm_package_tarball(tarball_bytes: bytes, package_name: str) -> ASTS
 
     return ASTSecurityReport(
         has_socket=any("SOURCE_CODE_NETWORK_CALL" in f for f in all_flags),
-        has_exfiltration_destination=any("EXFILTRATION_DESTINATION_DETECTED" in f for f in all_flags),
-        has_credential_harvesting=any("CREDENTIAL_PATH_HARVESTING" in f or "SOURCE_CODE_CONFIRMED_STEALER" in f for f in all_flags),
+        has_exfiltration_destination=any("EXFILTRATION_DESTINATION_DETECTED" in f or "JS_DATAFLOW_SECRET_EXFIL" in f for f in all_flags),
+        has_credential_harvesting=any(
+            "CREDENTIAL_PATH_HARVESTING" in f or "SOURCE_CODE_CONFIRMED_STEALER" in f or "JS_DATAFLOW_SECRET_EXFIL" in f
+            for f in all_flags
+        ),
         has_bundled_binary=any("BUNDLED_NATIVE_BINARY" in f for f in all_flags),
         has_dynamic_obfuscation=any("DYNAMIC_EXECUTION" in f or "OBFUSCATION" in f for f in all_flags),
         total_source_files=total_source_files,

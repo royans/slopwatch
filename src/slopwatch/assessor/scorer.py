@@ -265,6 +265,10 @@ CONFIRMED_DANGEROUS_FLAG_PREFIXES = (
     "SOURCE_CODE_EVASIVE_PAYLOAD",      # anti-analysis evasion + execution/payload hook
     "PYTHON_PTH_CODE_EXECUTION",        # pypi: dangerous startup code in .pth file
     "GYP_WEAPONIZED_EXECUTION",         # npm: malicious node-gyp python escape or node execution
+    "JS_DATAFLOW_SECRET_EXFIL",         # npm (js_ast): env / credential file / foreign token flows into a network call
+    "JS_DATAFLOW_REMOTE_CODE_EXEC",     # npm (js_ast): a network response flows into eval / child_process
+    "JS_DATAFLOW_DECODE_TO_EXEC",       # npm (js_ast): decoded data flows into eval / child_process
+    "JS_SHELL_DOWNLOAD_CRADLE",         # npm (js_ast): child_process runs curl|sh, powershell -enc, ...
     # CROSS_ECOSYSTEM_WORM_PROPAGATION deliberately NOT trusted as a blanket
     # prefix here — see has_confirmed_dangerous_execution() below, which
     # checks its per-rule confidence instead. Its 8 underlying YARA rules
@@ -307,6 +311,9 @@ WEAPONIZATION_CORROBORATING_PREFIXES = (
     "GYP_WEAPONIZED_EXECUTION",
     "PYTHON_PTH_CODE_EXECUTION",
     "OBFUSCATED_DYNAMIC_ACCESS",
+    "JS_DATAFLOW_",
+    "JS_SHELL_DOWNLOAD_CRADLE",
+    "AGENT_INSTRUCTION_INJECTION",
 )
 
 
@@ -600,6 +607,37 @@ def is_date_stamp_version(major_version: int, current_year: int) -> bool:
         return True
     except ValueError:
         return False
+
+
+def provenance_repo_matches_identity(
+    provenance_repo: Optional[str],
+    entity_token: Optional[str],
+    trusted_vendor_id: Optional[str] = None,
+    domain_root: Optional[str] = None,
+) -> bool:
+    """True if the repository named by signed provenance is owned by the identity the package claims.
+
+    The owner must be one of the brand's known GitHub organisations, or a GitHub org whose
+    name *equals* the entity / vendor / author-domain root. Equality, not prefix: an attacker
+    can register `github.com/openai-tools` but not `github.com/openai`.
+    """
+    from slopwatch.core.provenance import repo_owner, repo_in_orgs
+
+    owner = repo_owner(provenance_repo)
+    if not owner:
+        return False
+    orgs: Set[str] = set()
+    for key in (entity_token, trusted_vendor_id):
+        if not key:
+            continue
+        k = key.lower()
+        orgs.update(OFFICIAL_VENDOR_ORGS.get(k, []))
+        orgs.update(TRUSTED_VENDORS.get(k, {}).get("github_orgs", []))
+    if repo_in_orgs(provenance_repo, orgs):
+        return True
+    owner_name = owner.split("/", 1)[1]
+    names = {n.lower() for n in (entity_token, trusted_vendor_id, domain_root) if n and len(n) >= 3}
+    return owner_name in names
 
 
 class ProgressiveThreatEvaluator:
@@ -965,20 +1003,31 @@ class ProgressiveThreatEvaluator:
             domain_trust_engine = get_shared_domain_trust_engine()
             domain_rep = domain_trust_engine.get_domain_reputation(author_domain)
 
-            # Check cryptographic build provenance (PyPI Trusted Publishing OIDC / npm SLSA)
+            # Cryptographic build provenance (PyPI Trusted Publishing / npm SLSA). It proves which
+            # repository the release was built from, not that the publisher is the brand: anyone can
+            # publish with provenance from their own repo. It vouches only when that repository is
+            # owned by the claimed brand's GitHub organisation (see core/provenance.py).
             has_crypto_provenance = bool(getattr(meta, "has_provenance", False))
             provenance_type = getattr(meta, "provenance_type", None) or "sigstore_oidc"
+            provenance_repo = getattr(meta, "provenance_repository", None)
+            declared_repo = getattr(meta, "declared_repository", None)
+            provenance_aligned = bool(
+                has_crypto_provenance
+                and provenance_repo_matches_identity(
+                    provenance_repo, candidate.entity_token, trusted_vendor_id, domain_root
+                )
+            )
             effective_trust_score = domain_rep.trust_score if domain_rep else 0.0
-            if has_crypto_provenance:
+            if provenance_aligned:
                 effective_trust_score = max(0.85, min(1.0, effective_trust_score + 0.35))
 
             is_domain_trusted = bool(domain_rep and domain_rep.trust_score >= 0.7)
-            if (is_domain_trusted or has_crypto_provenance) and not is_trusted_vendor:
+            if (is_domain_trusted or provenance_aligned) and not is_trusted_vendor:
                 is_trusted_vendor = True
                 trusted_vendor_id = author_domain or candidate.entity_token
-                trusted_matched_by = f"provenance:{provenance_type}" if has_crypto_provenance else (f"dynamic_domain_trust:{int(domain_rep.trust_score * 100)}%" if domain_rep else "dynamic_domain_trust:0%")
+                trusted_matched_by = f"provenance:{provenance_type}" if provenance_aligned else (f"dynamic_domain_trust:{int(domain_rep.trust_score * 100)}%" if domain_rep else "dynamic_domain_trust:0%")
 
-            if has_crypto_provenance:
+            if provenance_aligned:
                 evidence_signals.append(
                     EvidenceSignal(
                         signal_id="SIGNAL_CRYPTOGRAPHIC_PROVENANCE",
@@ -987,10 +1036,83 @@ class ProgressiveThreatEvaluator:
                         score_impact=-30,
                         rule_code="RULE_CRYPTOGRAPHIC_PROVENANCE",
                         human_description=(
-                            f"Package release verified with cryptographic build provenance ({provenance_type}). "
-                            f"Guarantees authentic repository build pipeline and eliminates publisher domain spoofing risk."
+                            f"Release has signed build provenance ({provenance_type}) from {provenance_repo}, "
+                            f"a repository owned by the claimed publisher."
                         ),
-                        metadata={"provenance_type": provenance_type, "effective_trust_score": effective_trust_score},
+                        metadata={
+                            "provenance_type": provenance_type,
+                            "provenance_repository": provenance_repo,
+                            "effective_trust_score": effective_trust_score,
+                        },
+                    )
+                )
+            elif has_crypto_provenance:
+                accumulated_score = max(0, accumulated_score - 10)
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_BUILD_PROVENANCE",
+                        category="PROVENANCE",
+                        severity="INFO",
+                        score_impact=-10,
+                        rule_code="RULE_BUILD_PROVENANCE",
+                        human_description=(
+                            f"Release has signed build provenance from {provenance_repo or 'an attested CI publisher'}. "
+                            f"That repository is not owned by '{candidate.entity_token}', so it shows where the code "
+                            f"was built, not who published it."
+                        ),
+                        metadata={"provenance_type": provenance_type, "provenance_repository": provenance_repo},
+                    )
+                )
+
+            # The signed build repository differs from the repository the package advertises:
+            # the README/stars/repo link point somewhere the code was not built from.
+            if provenance_repo and declared_repo and provenance_repo != declared_repo:
+                accumulated_score += 25
+                if is_vendor_repo or (trusted_matched_by or "").startswith("repo:"):
+                    is_vendor_repo = False
+                    is_trusted_vendor = bool(is_vendor_domain or (trusted_matched_by or "").startswith(("scope:", "domain:")))
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_PROVENANCE_REPO_MISMATCH",
+                        category="PROVENANCE",
+                        severity="HIGH",
+                        score_impact=25,
+                        rule_code="RULE_PROVENANCE_REPO_MISMATCH",
+                        human_description=(
+                            f"Package advertises {declared_repo} but its signed build provenance says it was "
+                            f"built from {provenance_repo}."
+                        ),
+                        metadata={"declared_repository": declared_repo, "provenance_repository": provenance_repo},
+                    )
+                )
+
+            # Registry-enforced ownership (see core/established.py): the package is itself
+            # established, sits in an npm scope that publishes an established package, or shares
+            # an npm publishing account with the established package it extends.
+            from slopwatch.core.established import established_identity
+            est_identity = await established_identity(adapter, ecosystem, pkg_name, meta)
+            if est_identity:
+                est_kind, est_ref = est_identity
+                # Popularity alone is not ownership: an established package is kept out of squat
+                # verdicts (is_established_community below) but is not thereby "official".
+                if est_kind != "established" and not is_trusted_vendor:
+                    is_trusted_vendor = True
+                    trusted_vendor_id = est_ref
+                    trusted_matched_by = f"established_{est_kind}:{est_ref}"
+                accumulated_score = max(0, accumulated_score - 20)
+                evidence_signals.append(
+                    EvidenceSignal(
+                        signal_id="SIGNAL_ESTABLISHED_IDENTITY",
+                        category="PROVENANCE",
+                        severity="INFO",
+                        score_impact=-20,
+                        rule_code="RULE_ESTABLISHED_IDENTITY",
+                        human_description={
+                            "established": f"'{pkg_name}' is itself one of the most-used {ecosystem.value} packages.",
+                            "scope": f"Published under {est_ref}, an npm scope that already publishes established packages; only its owner can publish there.",
+                            "publisher": f"Published by the same npm account as the established package '{est_ref}'.",
+                        }[est_kind],
+                        metadata={"kind": est_kind, "ref": est_ref},
                     )
                 )
 
@@ -1468,6 +1590,12 @@ class ProgressiveThreatEvaluator:
                 accumulated_score += int(pf.score or 0)
                 if pf.gates_malicious:
                     has_malware_hooks = True
+                # The repository the package links to turned out not to be its own: any vendor
+                # trust that rested on that self-declared URL is withdrawn.
+                if pf.metadata.get("revokes_repo_trust"):
+                    is_vendor_repo = False
+                    if (trusted_matched_by or "").startswith("repo"):
+                        is_trusted_vendor = bool(is_vendor_domain)
 
             # ==================== 5. USAGE & ADOPTION RUBRIC (-40 to +10 pts) ====================
             monthly_dl = meta.monthly_downloads or 0
@@ -1655,7 +1783,7 @@ class ProgressiveThreatEvaluator:
                 any("stealer" in f.lower() for f in ast_report.flags)
                 or any("reverse_shell" in f.lower() or "reverse shell" in f.lower() for f in ast_report.flags)
                 or any("install_time_network_socket" in f.lower() or "socket connection" in f.lower() for f in ast_report.flags)
-                or any("exfiltration" in f.lower() for f in ast_report.flags)
+                or any("exfiltration" in f.lower() or f.startswith("JS_DATAFLOW_SECRET_EXFIL") for f in ast_report.flags)
                 or any("c2" in f.lower() for f in ast_report.flags)
                 or any("worm" in f.lower() for f in ast_report.flags)
                 or any("evasive_payload" in f.lower() for f in ast_report.flags)
@@ -1663,7 +1791,8 @@ class ProgressiveThreatEvaluator:
             )
 
             is_established_community = (
-                monthly_dl >= 50000
+                bool(est_identity and est_identity[0] == "established")
+                or monthly_dl >= 50000
                 or (monthly_dl >= 5000 and days_dormant >= 90)
                 or (monthly_dl >= 10000 and days_dormant >= 180)
                 or (days_dormant >= 365 and ast_report.total_lines_of_code >= 1000)

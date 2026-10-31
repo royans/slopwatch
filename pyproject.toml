@@ -57,6 +57,13 @@ db = [
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite>=0.19.0",
 ]
+# JavaScript data-flow analysis (assessor/js_ast.py): follows secrets / decoded data /
+# network responses into network and execution sinks instead of matching co-occurring
+# patterns. Without it npm source scanning falls back to YARA/regex only.
+js = [
+    "tree-sitter>=0.23",
+    "tree-sitter-javascript>=0.23",
+]
 dev = [
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite>=0.19.0",
@@ -87,6 +94,7 @@ include = ["slopwatch*"]
     "py.typed",
     "rules/*.yar",
     "signatures/*.json",
+    "signatures/*.txt",
 ]
 
 [tool.pytest.ini_options]

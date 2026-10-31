@@ -1469,3 +1469,25 @@ def test_npm_manifest_plain_local_script_is_not_a_dangerous_shell_command(cmd):
 def test_npm_manifest_shell_with_network_pipe_or_flags_is_still_dangerous(cmd):
     report = analyze_npm_package_manifest(_manifest_with({"preinstall": cmd}), "p")
     assert any(f.startswith("SUSPICIOUS_SHELL_COMMAND") for f in report.flags), cmd
+
+
+def test_npm_manifest_lone_lifecycle_hook_is_unverified_not_a_stub():
+    from slopwatch.assessor.npm_manifest import analyze_npm_package_manifest
+    manifest = {
+        "dist-tags": {"latest": "1.0.0"},
+        "versions": {"1.0.0": {
+            "scripts": {"install": "node install.js"},
+            "repository": {"type": "git", "url": "git+https://github.com/microsoft/playwright.git"},
+            "dist": {"unpackedSize": 9000, "fileCount": 4},
+        }},
+    }
+    report = analyze_npm_package_manifest(manifest, "playwright-firefox")
+    assert report.has_lifecycle_scripts is True
+    # Flagged for a look, but not as a squat; established packages are cleared by identity.
+    assert report.verdict == ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
+
+
+def test_npm_manifest_empty_package_is_a_stub():
+    from slopwatch.assessor.npm_manifest import analyze_npm_package_manifest
+    manifest = {"dist-tags": {"latest": "0.0.1"}, "versions": {"0.0.1": {"dist": {"unpackedSize": 200, "fileCount": 1}}}}
+    assert analyze_npm_package_manifest(manifest, "openai-helper-sdk").verdict == ThreatVerdict.SQUATTED_STUB

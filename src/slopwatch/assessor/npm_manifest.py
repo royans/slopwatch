@@ -102,6 +102,14 @@ def analyze_npm_package_manifest(manifest_data: Dict[str, Any], package_name: st
             verdict = ThreatVerdict.MALICIOUS if score >= 70 else ThreatVerdict.SUSPICIOUS
         else:
             verdict = ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
+    elif has_lifecycle:
+        # Install-time code nothing here clears: worth a look, but not a "squatted stub" —
+        # that label made playwright-firefox (`install -> node install.js`) read as a squat.
+        # Established packages like it are cleared by the established-identity gate
+        # (core/established.py), not by weakening this: on the DataDog corpus a lone hook is
+        # what flags most dependency-confusion beacons (benchmark 2026-10-31: npm any-flag
+        # detection fell 94% -> 67% when this returned BENIGN).
+        verdict = ThreatVerdict.UNVERIFIED_HIGH_SIGNAL
     elif score > 0 or is_empty:
         verdict = ThreatVerdict.SQUATTED_STUB
 

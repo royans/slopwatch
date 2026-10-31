@@ -26,6 +26,7 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^src/slopwatch/(?!integrations/flagthis/).*\.py$",
     r"^src/slopwatch/rules/.*\.yar$",
     r"^src/slopwatch/signatures/.*\.json$",
+    r"^src/slopwatch/signatures/established_(?:npm|pypi)\.txt$",
     r"^tests/.*\.py$",
     r"^tests/fixtures/.*(?:\.json|\.py)$",
     r"^config/config\.yaml\.template$",
@@ -35,6 +36,7 @@ PUBLIC_ALLOWLIST_PATTERNS = [
     r"^scripts/install_hooks\.sh$",
     r"^scripts/release\.py$",
     r"^scripts/rule_scorecard\.py$",
+    r"^scripts/refresh_established_packages\.py$",
     r"^\.githooks/pre-commit$",
     r"^\.pre-commit-config\.yaml$",
     r"^pyproject\.toml$",
@@ -233,6 +235,12 @@ class PresubmitGatekeeper:
 
         if self.is_monorepo:
             # Monorepo legitimately houses internal AI prompts and MariaDB database connectivity
+            return
+
+        # Generated lists of third-party registry package names (scripts/refresh_established_packages.py).
+        # Popular packages are called `mariadb`, `pymysql`, ...: the keyword scan below would read those
+        # as internal-stack leaks. They still went through the secret scan above.
+        if rel_path in ("src/slopwatch/signatures/established_npm.txt", "src/slopwatch/signatures/established_pypi.txt"):
             return
 
         # 2. AI Instructions & Prompt Markers (public repo only)

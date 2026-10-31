@@ -14,6 +14,9 @@ import tarfile
 import zipfile
 import warnings
 from typing import List, Tuple, Dict, Set, Optional, Iterable
+from slopwatch.assessor.agent_files import (
+    AGENT_INJECTION_PREFIX, AGENT_INJECTION_SCORE, MAX_AGENT_FILE_BYTES, is_agent_instruction_file, scan_agent_file,
+)
 from slopwatch.core.dto import ASTSecurityReport, ThreatVerdict
 from slopwatch.assessor.yara_engine import get_yara_scanner
 from slopwatch.core.confidence import distinct_signal_confidences, passes_confidence_gate
@@ -943,6 +946,12 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                         if p_dang:
                             has_pth_execution = True
                         max_score = max(max_score, p_score)
+                elif member.isfile() and member.size <= MAX_AGENT_FILE_BYTES and is_agent_instruction_file(member.name):
+                    af = tar.extractfile(member)
+                    if af:
+                        a_flags, a_lines = scan_agent_file(af.read().decode("utf-8", errors="ignore"), member.name)
+                        all_flags.extend(t for _, t in a_flags if t not in all_flags)
+                        all_lines.extend(t for _, t in a_lines if t not in all_lines)
                 elif any(member.name.endswith(ext) for ext in NATIVE_BINARY_EXTENSIONS):
                     if not _is_test_or_fixture_path(member.name):
                         if not has_bundled_binary:
@@ -1071,6 +1080,14 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                             max_score = max(max_score, p_score)
                         except Exception:
                             pass
+                    elif info.file_size <= MAX_AGENT_FILE_BYTES and is_agent_instruction_file(filename):
+                        try:
+                            with z.open(info) as af:
+                                a_flags, a_lines = scan_agent_file(af.read().decode("utf-8", errors="ignore"), filename)
+                            all_flags.extend(t for _, t in a_flags if t not in all_flags)
+                            all_lines.extend(t for _, t in a_lines if t not in all_lines)
+                        except Exception:
+                            pass
                     elif any(filename.endswith(ext) for ext in NATIVE_BINARY_EXTENSIONS):
                         if not _is_test_or_fixture_path(filename):
                             is_standard_py_extension = (
@@ -1120,6 +1137,9 @@ def analyze_python_package_tarball(tarball_bytes: bytes, package_name: str) -> A
                 verdict=ThreatVerdict.SUSPICIOUS,
             )
 
+
+    if any(f.startswith(AGENT_INJECTION_PREFIX) for f in all_flags):
+        max_score = max(max_score, AGENT_INJECTION_SCORE)
 
     is_empty_stub = (total_loc <= 25 and not has_functions_or_classes) or (total_source_files <= 1 and total_loc <= 10)
     size_tier = "EMPTY_STUB" if is_empty_stub else "TINY_CODEBASE" if total_loc < 150 else "MODERATE_CODEBASE" if total_loc < 1000 else "LARGE_CODEBASE"

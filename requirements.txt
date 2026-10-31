@@ -3,8 +3,9 @@
 # End users do NOT need this file. Runtime deps are declared in pyproject.toml:
 #   pip install slopwatch          # core CLI (registry checks + offline heuristics)
 #   pip install "slopwatch[db]"    # + local SQLite watchlist / registered-package cache
+#   pip install "slopwatch[js]"    # + tree-sitter JavaScript data-flow analysis
 #
-# The list below is core + [db] + test tooling, for contributors and CI.
+# The list below is core + [db] + [js] + test tooling, for contributors and CI.
 
 # --- core runtime ---
 aiohttp>=3.9.0
@@ -17,6 +18,10 @@ yara-python>=4.5.0
 # --- [db] extra: local persistence used by `slopwatch check` when a DB is present ---
 sqlalchemy[asyncio]>=2.0.0
 aiosqlite>=0.19.0
+
+# --- [js] extra: JavaScript data-flow analysis (assessor/js_ast.py) ---
+tree-sitter>=0.23
+tree-sitter-javascript>=0.23
 
 # --- test tooling ---
 pytest>=8.0.0

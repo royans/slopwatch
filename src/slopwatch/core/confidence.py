@@ -72,6 +72,12 @@ DEFAULT_CONFIDENCE = "MEDIUM"
 # verified empirically this session (55 real high-download legitimate
 # packages, zero false positives) for MODULE_TOPLEVEL_EXECUTION specifically.
 AST_FLAG_CONFIDENCE: Dict[str, str] = {
+    # js_ast data-flow findings: a value followed from source to sink, not co-occurrence.
+    "JS_DATAFLOW_SECRET_EXFIL": "HIGH",
+    "JS_DATAFLOW_REMOTE_CODE_EXEC": "HIGH",
+    "JS_DATAFLOW_DECODE_TO_EXEC": "HIGH",
+    "JS_SHELL_DOWNLOAD_CRADLE": "HIGH",
+    "JS_DATAFLOW_HOST_RECON_BEACON": "MEDIUM",
     "INSTALL_TIME_EXECUTION": "HIGH",
     "INSTALL_TIME_CMDCLASS_OVERRIDE": "HIGH",
     "INSTALL_TIME_NETWORK_SOCKET": "HIGH",
