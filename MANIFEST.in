@@ -5,5 +5,5 @@ include requirements.txt
 include .pre-commit-hooks.yaml
 include src/slopwatch/py.typed
 recursive-include src/slopwatch/rules *.yar
-recursive-include src/slopwatch/signatures *.json
+recursive-include src/slopwatch/signatures *.json *.txt
 recursive-include tests *.py *.json
